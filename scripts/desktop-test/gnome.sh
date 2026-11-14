@@ -196,6 +196,14 @@ de_screenshot() {
 }
 phase2_checks
 palette_checks
+source "$HERE/phase5.sh"
+de_copy_png() { shell_eval "const {GLib, St} = imports.gi; St.Clipboard.get_default().set_content(St.ClipboardType.CLIPBOARD, 'image/png', new GLib.Bytes(GLib.file_get_contents('$1')[1])); 1" >/dev/null; }
+de_copy_uris() { shell_eval "const {GLib, St} = imports.gi; St.Clipboard.get_default().set_content(St.ClipboardType.CLIPBOARD, 'text/uri-list', new GLib.Bytes(new TextEncoder().encode('$1' + String.fromCharCode(13, 10)))); 1" >/dev/null; }
+de_pause_probe() {
+    if grep -a -q 'Capture paused or app ignored: not reading the clipboard' "$SHELL_LOG"; then pass "the extension did not read the clipboard while paused (shell log: 'not reading the clipboard')"; else fail "no 'not reading the clipboard' line in the shell log"; fi
+    if grep -a -q 'Capture paused: the clipboard is not read' "$MENEW_LOG"; then pass "the daemon answered ShouldCapture=false while paused (daemon log)"; else fail "no 'Capture paused' line in the daemon log"; fi
+}
+phase5_checks
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "RESULT: all checks passed"; else echo "RESULT: $FAILS check(s) FAILED"; fi

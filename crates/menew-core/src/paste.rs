@@ -11,6 +11,7 @@ pub const EV_KEY: u16 = 0x01;
 pub const SYN_REPORT: u16 = 0;
 pub const KEY_LEFTCTRL: u16 = 29;
 pub const KEY_V: u16 = 47;
+pub const KEY_LEFT: u16 = 105;
 
 pub const KEY_RELEASE: i32 = 0;
 pub const KEY_PRESS: i32 = 1;
@@ -39,6 +40,18 @@ pub fn ctrl_v_sequence() -> Vec<KeyEvent> {
     ]
 }
 
+/// `count` presses of the left arrow (the cursor goes back after a snippet with `{cursor}`); at most 2000, like the Mac.
+pub fn left_sequence(count: usize) -> Vec<KeyEvent> {
+    let mut out = vec![];
+    for _ in 0..count.min(2000) {
+        out.push(ev(EV_KEY, KEY_LEFT, KEY_PRESS));
+        out.push(ev(EV_SYN, SYN_REPORT, 0));
+        out.push(ev(EV_KEY, KEY_LEFT, KEY_RELEASE));
+        out.push(ev(EV_SYN, SYN_REPORT, 0));
+    }
+    out
+}
+
 /// What to do after an entry was copied and the palette hidden.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PasteAction {
@@ -59,7 +72,7 @@ pub fn decide_paste(mode: PasteMode, uinput_writable: bool) -> PasteAction {
 pub const FOCUS_DELAY_MS: u64 = 150;
 
 #[cfg(target_os = "linux")]
-pub use linux::{inject_ctrl_v, uinput_writable};
+pub use linux::{inject_ctrl_v, inject_left, uinput_writable};
 
 #[cfg(not(target_os = "linux"))]
 pub fn uinput_writable() -> bool {
@@ -72,6 +85,11 @@ pub fn inject_ctrl_v() -> std::io::Result<()> {
         std::io::ErrorKind::Unsupported,
         "uinput is only available on Linux",
     ))
+}
+
+#[cfg(not(target_os = "linux"))]
+pub fn inject_left(_count: usize) -> std::io::Result<()> {
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "uinput is only available on Linux"))
 }
 
 #[cfg(target_os = "linux")]
@@ -156,14 +174,28 @@ mod linux {
     /// Create a temporary virtual keyboard, press Ctrl+V and destroy it.
     /// Blocking: call from a worker thread or after the focus delay.
     pub fn inject_ctrl_v() -> Result<()> {
+        inject(&[KEY_LEFTCTRL, KEY_V], &ctrl_v_sequence())
+    }
+
+    /// Press the left arrow `count` times (the cursor goes back after pasting a snippet with `{cursor}`).
+    pub fn inject_left(count: usize) -> Result<()> {
+        if count == 0 {
+            return Ok(());
+        }
+        inject(&[KEY_LEFT], &left_sequence(count))
+    }
+
+    /// Create a temporary virtual keyboard with these keys, play the events and destroy it.
+    fn inject(keys: &[u16], events: &[KeyEvent]) -> Result<()> {
         let mut file = OpenOptions::new()
             .write(true)
             .custom_flags(libc::O_NONBLOCK)
             .open(UINPUT_PATH)?;
 
         ioctl(&file, UI_SET_EVBIT, EV_KEY as libc::c_int)?;
-        ioctl(&file, UI_SET_KEYBIT, KEY_LEFTCTRL as libc::c_int)?;
-        ioctl(&file, UI_SET_KEYBIT, KEY_V as libc::c_int)?;
+        for k in keys {
+            ioctl(&file, UI_SET_KEYBIT, *k as libc::c_int)?;
+        }
 
         let mut name = [0u8; 80];
         let label = b"menew virtual keyboard";
@@ -185,8 +217,8 @@ mod linux {
         // let the compositor notice the new device before the first key
         std::thread::sleep(std::time::Duration::from_millis(250));
         let mut result = Ok(());
-        for e in ctrl_v_sequence() {
-            if let Err(err) = write_event(&mut file, &e) {
+        for e in events {
+            if let Err(err) = write_event(&mut file, e) {
                 result = Err(err);
                 break;
             }
@@ -252,6 +284,15 @@ mod tests {
         assert_eq!(decide_paste(PasteMode::Auto, false), PasteAction::NotifyOnly);
     }
 
+
+    #[test]
+    fn left_sequence_presses_and_releases_each_time_and_is_capped() {
+        let seq = left_sequence(3);
+        assert_eq!(seq.iter().filter(|e| e.kind == EV_KEY && e.value == 1).count(), 3);
+        assert_eq!(seq.iter().filter(|e| e.kind == EV_KEY && e.value == 0).count(), 3);
+        assert_eq!(left_sequence(5000).iter().filter(|e| e.kind == EV_KEY && e.value == 1).count(), 2000);
+        assert!(left_sequence(0).is_empty());
+    }
     #[test]
     fn copy_only_never_injects() {
         assert_eq!(decide_paste(PasteMode::CopyOnly, true), PasteAction::NotifyOnly);

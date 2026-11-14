@@ -7,6 +7,10 @@ pub enum TrayCommand {
     OpenClipboard,
     /// Delete every unpinned clipboard entry.
     ClearHistory,
+    /// Pause the clipboard capture until resumed, or resume it.
+    TogglePause,
+    /// Paste the next item of the paste queue.
+    PasteNext,
     Quit,
 }
 
@@ -18,6 +22,10 @@ pub struct TrayStatus {
     pub summary: String,
     /// One line per running timer or focus session (the tooltip body).
     pub lines: Vec<String>,
+    /// The clipboard capture is paused.
+    pub paused: bool,
+    /// Items waiting in the paste queue (0 also when the queue is off).
+    pub queue: usize,
 }
 
 impl TrayStatus {
@@ -69,6 +77,8 @@ mod linux_impl {
             let tx_open = self.tx.clone();
             let tx_clip = self.tx.clone();
             let tx_clear = self.tx.clone();
+            let tx_pause = self.tx.clone();
+            let tx_next = self.tx.clone();
             let tx_quit = self.tx.clone();
 
             vec![
@@ -95,6 +105,26 @@ mod linux_impl {
                     activate: Box::new(move |_| {
                         info!("Tray: Clear history requested");
                         let _ = tx_clear.send(TrayCommand::ClearHistory);
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+                CheckmarkItem {
+                    label: menew_core::t("tray_pause_clip").to_string(),
+                    checked: self.status.paused,
+                    activate: Box::new(move |_this: &mut Self| {
+                        info!("Tray: pause/resume clipboard capture requested");
+                        let _ = tx_pause.send(TrayCommand::TogglePause);
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+                StandardItem {
+                    label: menew_core::t("act_paste_next").to_string(),
+                    enabled: self.status.queue > 0,
+                    activate: Box::new(move |_| {
+                        info!("Tray: paste next requested");
+                        let _ = tx_next.send(TrayCommand::PasteNext);
                     }),
                     ..Default::default()
                 }
@@ -168,7 +198,7 @@ mod tests {
     #[test]
     fn title_shows_the_countdown() {
         assert_eq!(TrayStatus::default().title(), "Menew");
-        let s = TrayStatus { summary: "FOCUS 24m".into(), lines: vec![] };
+        let s = TrayStatus { summary: "FOCUS 24m".into(), ..Default::default() };
         assert_eq!(s.title(), "Menew \u{b7} FOCUS 24m");
     }
 

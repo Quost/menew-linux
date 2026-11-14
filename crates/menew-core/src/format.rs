@@ -79,6 +79,21 @@ const WEEKDAYS_DE: [&str; 7] = ["Mo.", "Di.", "Mi.", "Do.", "Fr.", "Sa.", "So."]
 const WEEKDAYS_ES: [&str; 7] = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
 const WEEKDAYS_ZH: [&str; 7] = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 
+const MONTHS_DE: [&str; 12] = ["Jan.", "Feb.", "M\u{e4}rz", "Apr.", "Mai", "Juni", "Juli", "Aug.", "Sept.", "Okt.", "Nov.", "Dez."];
+
+/// Day, month and year (`.dateTime.day().month().year()`): "Nov 14, 2026", "14 de nov. de 2026",
+/// "14. Nov. 2026", "14 nov 2026", "2026\u{5e74}11\u{6708}14\u{65e5}".
+pub fn date_medium(dt: &NaiveDateTime, lang: Language) -> String {
+    let (d, mo, y) = (dt.day(), dt.month() as usize, dt.year());
+    match lang {
+        Language::En => format!("{} {}, {}", MONTHS_EN[mo - 1], d, y),
+        Language::Pt => format!("{} de {} de {}", d, MONTHS_PT[mo - 1], y),
+        Language::De => format!("{}. {} {}", d, MONTHS_DE[mo - 1], y),
+        Language::Es => format!("{} {} {}", d, MONTHS_ES[mo - 1], y),
+        Language::Zh => format!("{}\u{5e74}{}\u{6708}{}\u{65e5}", y, mo, d),
+    }
+}
+
 /// Abbreviated weekday plus time ("Sat 3:00 PM"), as in the alarm title.
 pub fn weekday_time(dt: &NaiveDateTime, lang: Language) -> String {
     let i = dt.weekday().num_days_from_monday() as usize;

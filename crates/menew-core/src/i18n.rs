@@ -169,11 +169,11 @@ pub fn t_in(key: &'static str, lang: Language) -> &'static str {
             Language::En => "Clipboard history is empty",
         },
         "clipboard_hint" => match lang {
-            Language::Pt => "Enter: copiar  |  Ctrl+P: fixar  |  Ctrl+Delete: apagar  |  Tab: aplicativos",
-            Language::De => "Enter: kopieren  |  Strg+P: anheften  |  Strg+Entf: löschen  |  Tab: Apps",
-            Language::Es => "Enter: copiar  |  Ctrl+P: fijar  |  Ctrl+Supr: borrar  |  Tab: aplicaciones",
-            Language::Zh => "Enter: 复制  |  Ctrl+P: 固定  |  Ctrl+Delete: 删除  |  Tab: 应用",
-            Language::En => "Enter: copy  |  Ctrl+P: pin  |  Ctrl+Delete: delete  |  Tab: apps",
+            Language::Pt => "Enter: copiar  |  Ctrl+K: ações  |  Ctrl+P: fixar  |  Ctrl+Delete: apagar  |  Alt+←→: filtro  |  Tab: apps",
+            Language::De => "Enter: kopieren  |  Strg+K: Aktionen  |  Strg+P: anheften  |  Strg+Entf: löschen  |  Alt+←→: Filter  |  Tab: Apps",
+            Language::Es => "Enter: copiar  |  Ctrl+K: acciones  |  Ctrl+P: fijar  |  Ctrl+Supr: borrar  |  Alt+←→: filtro  |  Tab: apps",
+            Language::Zh => "Enter: 复制  |  Ctrl+K: 操作  |  Ctrl+P: 固定  |  Ctrl+Delete: 删除  |  Alt+←→: 筛选  |  Tab: 应用",
+            Language::En => "Enter: copy  |  Ctrl+K: actions  |  Ctrl+P: pin  |  Ctrl+Delete: delete  |  Alt+←→: filter  |  Tab: apps",
         },
         "apps_hint" => match lang {
             Language::Pt => "Tab: histórico da área de transferência",

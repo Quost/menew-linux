@@ -7,6 +7,7 @@ license = "GPL-3.0-only"
 
 [dependencies]
 menew-core = { path = "../menew-core" }
+chrono = "0.4"
 tracing = "0.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]

@@ -1,4 +1,7 @@
 pub mod autostart;
+pub mod clip_item;
+pub mod clip_policy;
+pub mod clip_smart;
 pub mod calculator;
 pub mod clipboard_db;
 pub mod clipboard_view;
@@ -13,18 +16,22 @@ pub mod focus;
 pub mod format;
 pub mod i18n;
 pub mod palette;
+pub mod ocr;
 pub mod paste;
+pub mod paste_queue;
 pub mod quick_links;
 pub mod recents;
 pub mod script_commands;
 pub mod search;
+pub mod sha256;
+pub mod snippets;
 pub mod strings;
 pub mod text_transforms;
 pub mod time_zones;
 pub mod timers;
 
 pub use calculator::{evaluate, CalcResult};
-pub use clipboard_db::{ClipboardDatabase, ClipboardEntry};
+pub use clipboard_db::{ClipKind, ClipboardDatabase, ClipboardEntry};
 pub use clipboard_view::{
     age_between, format_age, preview, sort_for_display, Age, PaletteMode, PREVIEW_MAX_CHARS,
 };

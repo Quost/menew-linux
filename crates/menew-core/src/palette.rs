@@ -4,6 +4,10 @@
 //! focus, notifications and the tray.
 
 use crate::calculator;
+use crate::clip_item::collapsed_preview;
+use crate::clip_smart::{self, SmartRun};
+use crate::clipboard_db::ClipKind;
+use crate::snippets::Snippet;
 use crate::currency;
 use crate::desktop_entry::DesktopApp;
 use crate::dev_tools;
@@ -41,7 +45,8 @@ impl Kind {
             Kind::App => "kind_app",
             Kind::Clip => "kind_clip",
             Kind::Tip => "kind_tip",
-            Kind::Profile | Kind::Window | Kind::Snippet | Kind::Note => "kind_action",
+            Kind::Snippet => "kind_snippet",
+            Kind::Profile | Kind::Window | Kind::Note => "kind_action",
         };
         tr(key, lang, &[])
     }
@@ -91,6 +96,17 @@ pub enum ItemAction {
     Quit,
     /// Paste an entry of the clipboard history.
     PasteClip(String),
+    /// Paste an image or file entry of the history (by id).
+    PasteEntry(i64),
+    /// Paste the snippet with this id (asks its `{input:}` fields first).
+    PasteSnippet(String),
+    /// Pause the capture for that many minutes, or until resumed.
+    PauseClipboard(Option<u32>),
+    ResumeClipboard,
+    /// Turn the paste queue on or off.
+    ToggleQueue,
+    /// Paste the next item of the queue.
+    PasteNext,
 }
 
 impl ItemAction {
@@ -124,6 +140,13 @@ impl ItemAction {
             ItemAction::CopyUnixTimestamp => "copy-unix-timestamp".into(),
             ItemAction::Quit => "quit".into(),
             ItemAction::PasteClip(_) => "paste-clip".into(),
+            ItemAction::PasteEntry(id) => format!("paste-entry:{id}"),
+            ItemAction::PasteSnippet(id) => format!("paste-snippet:{id}"),
+            ItemAction::PauseClipboard(Some(m)) => format!("pause-clipboard:{m}"),
+            ItemAction::PauseClipboard(None) => "pause-clipboard".into(),
+            ItemAction::ResumeClipboard => "resume-clipboard".into(),
+            ItemAction::ToggleQueue => "toggle-queue".into(),
+            ItemAction::PasteNext => "paste-next".into(),
         }
     }
 }
@@ -197,7 +220,22 @@ pub struct ClipHit {
     pub id: i64,
     pub title: String,
     pub text: String,
+    /// Images and files are pasted by id, text by its content.
+    pub kind: ClipKind,
 }
+
+/// What the palette needs to know about the clipboard features besides the text on the clipboard.
+#[derive(Clone, Copy, Default)]
+pub struct ClipContext<'a> {
+    /// Country of the locale (`BR`), for the WhatsApp action.
+    pub region: Option<&'a str>,
+    pub snippets: &'a [Snippet],
+    /// Capture is paused.
+    pub paused: bool,
+    pub queue_on: bool,
+    pub queue_len: usize,
+}
+
 
 /// Everything the engine needs to know, so that it stays pure.
 pub struct PaletteContext<'a> {
@@ -213,6 +251,7 @@ pub struct PaletteContext<'a> {
     pub focus_running: bool,
     pub scripts: &'a [Script],
     pub autostart_on: bool,
+    pub clip: ClipContext<'a>,
 }
 
 const SUGGESTIONS: [&str; 4] = ["action.clipboard", "action.focus", "action.clearclip", "action.uuid"];
@@ -236,7 +275,9 @@ pub fn results(ctx: &PaletteContext, raw: &str, clip_search: &dyn Fn(&str) -> Ve
             .filter_map(|id| by_id(id))
             .filter(|s| !recent.iter().any(|r| r.id == s.id))
             .collect();
-        let mut out: Vec<PaletteItem> = recent.into_iter().chain(suggested).take(5).collect();
+        // what was just copied comes first: a phone, an address, a color, a meeting link (3 at most)
+        let smart: Vec<PaletteItem> = ctx.clipboard_text.as_deref().map(|t| smart_items(t, ctx)).unwrap_or_default().into_iter().take(3).collect();
+        let mut out: Vec<PaletteItem> = smart.into_iter().chain(recent).chain(suggested).take(5).collect();
         out.extend(tips(lang));
         return out;
     }
@@ -249,14 +290,15 @@ pub fn results(ctx: &PaletteContext, raw: &str, clip_search: &dyn Fn(&str) -> Ve
     pool.extend(timers::items(ctx.timers, raw, &ctx.tz, lang));
     if let Some(text) = ctx.clipboard_text.as_deref() {
         pool.extend(transform_items(text, &q, lang));
+        pool.extend(smart_items(text, ctx));
     }
     for hit in clip_search(raw).into_iter().take(6) {
-        pool.push(
-            PaletteItem::new(&format!("clip.{}", hit.id), Kind::Clip, &hit.title)
-                .icon(Icon::Symbol("edit-paste-symbolic"))
-                .forget()
-                .act(ItemAction::PasteClip(hit.text)),
-        );
+        let (icon, action) = match hit.kind {
+            ClipKind::Text => ("edit-paste-symbolic", ItemAction::PasteClip(hit.text)),
+            ClipKind::Image => ("image-x-generic-symbolic", ItemAction::PasteEntry(hit.id)),
+            ClipKind::File => ("text-x-generic-symbolic", ItemAction::PasteEntry(hit.id)),
+        };
+        pool.push(PaletteItem::new(&format!("clip.{}", hit.id), Kind::Clip, &hit.title).icon(Icon::Symbol(icon)).forget().act(action));
     }
 
     // math and conversions always on top
@@ -285,6 +327,20 @@ pub fn results(ctx: &PaletteContext, raw: &str, clip_search: &dyn Fn(&str) -> Ve
         }
     }
     out
+}
+
+/// `SmartClip.paletteItems`: what to do with the copied text (call, open in maps, join the meeting...).
+fn smart_items(text: &str, ctx: &PaletteContext) -> Vec<PaletteItem> {
+    clip_smart::actions(text, ctx.lang, ctx.clip.region)
+        .into_iter()
+        .map(|a| {
+            let action = match a.run {
+                SmartRun::Open(u) => ItemAction::OpenUri(u),
+                SmartRun::Copy(t) => ItemAction::Copy(t),
+            };
+            PaletteItem::new(&format!("smart.{}", a.id), Kind::Action, &a.title).subtitle(&a.subtitle).kw(&a.keywords).icon(Icon::Symbol(a.icon)).forget().act(action)
+        })
+        .collect()
 }
 
 fn tips(lang: Language) -> Vec<PaletteItem> {
@@ -326,6 +382,49 @@ fn commands(ctx: &PaletteContext) -> Vec<PaletteItem> {
             .icon(Icon::Symbol("edit-clear-all-symbolic"))
             .act(ItemAction::ClearClipboard),
     );
+    // pause or resume the capture (`clippause`, `clipresume` on the Mac)
+    if ctx.clip.paused {
+        out.push(
+            PaletteItem::new("action.clipresume", Kind::Action, &tr("act_resume_clip", lang, &[]))
+                .kw("clipboard retomar resume pausa pause")
+                .icon(Icon::Symbol("media-playback-start-symbolic"))
+                .act(ItemAction::ResumeClipboard),
+        );
+    } else {
+        out.push(
+            PaletteItem::new("action.clippause", Kind::Action, &tr("act_pause_1h", lang, &[]))
+                .kw("clipboard pausar pause privacidade privacy")
+                .icon(Icon::Symbol("media-playback-pause-symbolic"))
+                .act(ItemAction::PauseClipboard(Some(60))),
+        );
+    }
+    // the paste queue (linux: its step is an action, see `paste_queue.rs`)
+    out.push(
+        PaletteItem::new("action.queue", Kind::Action, &tr(if ctx.clip.queue_on { "queue_stop_help" } else { "act_queue_on" }, lang, &[]))
+            .kw("fila colagem paste queue warteschlange cola pegado 粘贴队列 clipboard")
+            .icon(Icon::Symbol("view-list-ordered-symbolic"))
+            .act(ItemAction::ToggleQueue),
+    );
+    if ctx.clip.queue_on && ctx.clip.queue_len > 0 {
+        out.push(
+            PaletteItem::new("action.pastenext", Kind::Action, &tr("act_paste_next", lang, &[]))
+                .subtitle(&tr("queue_count", lang, &[&ctx.clip.queue_len.to_string()]))
+                .kw("fila colagem paste queue next proximo naechste siguiente 下一项 clipboard")
+                .icon(Icon::Symbol("go-next-symbolic"))
+                .shortcut("Ctrl+Alt+N")
+                .act(ItemAction::PasteNext),
+        );
+    }
+    // snippets (`Palette.commands`)
+    for s in ctx.clip.snippets {
+        out.push(
+            PaletteItem::new(&format!("snippet.{}", s.id), Kind::Snippet, &s.title)
+                .subtitle(&collapsed_preview(&s.text))
+                .kw(&format!("snippet {}", s.text))
+                .icon(Icon::Symbol("insert-text-symbolic"))
+                .act(ItemAction::PasteSnippet(s.id.clone())),
+        );
+    }
     out.push(
         PaletteItem::new(
             "action.autostart",
@@ -554,6 +653,7 @@ mod tests {
             focus_running,
             scripts: &[],
             autostart_on: false,
+            clip: Default::default(),
         };
         results(&ctx, query, &|_| vec![])
     }
@@ -630,6 +730,7 @@ mod tests {
             focus_running: false,
             scripts: &[],
             autostart_on: false,
+            clip: Default::default(),
         };
         let out = results(&ctx, "appy", &|_| vec![]);
         assert_eq!(out.len(), MAX_RESULTS + 1);
@@ -653,8 +754,9 @@ mod tests {
             focus_running: false,
             scripts: &[],
             autostart_on: false,
+            clip: Default::default(),
         };
-        let hit = |id: i64, t: &str| ClipHit { id, title: t.into(), text: t.into() };
+        let hit = |id: i64, t: &str| ClipHit { id, title: t.into(), text: t.into(), kind: ClipKind::Text };
         let out = results(&ctx, "history", &|_| vec![hit(1, "my history notes")]);
         let ids: Vec<&str> = out.iter().map(|i| i.id.as_str()).collect();
         // actions scored 633 and 627 come first, the clipboard hit (200) after, the web search last

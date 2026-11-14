@@ -43,6 +43,10 @@ enum Action {
     PaletteQuery(String),
     /// Test hook: press Enter on the Nth (0-based) result of the current search.
     PaletteActivate(usize),
+    /// Paste the next item of the paste queue.
+    PasteNext,
+    /// Test hook: show the clipboard list with this filter and search text, log it.
+    ClipboardView(String, String),
     Quit,
 }
 
@@ -58,6 +62,8 @@ fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
         Action::Quit
     } else if args.iter().any(|a| a == "toggle") {
         Action::TogglePalette
+    } else if args.iter().any(|a| a == "paste-next") {
+        Action::PasteNext
     } else if args.iter().any(|a| a == "clipboard") {
         Action::ShowClipboard
     } else if is_remote {
@@ -72,6 +78,9 @@ fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
 fn test_action(args: &[String]) -> Option<Action> {
     if let Some(p) = args.iter().position(|a| a == "__palette-query") {
         return args.get(p + 1).map(|t| Action::PaletteQuery(t.clone()));
+    }
+    if let Some(p) = args.iter().position(|a| a == "__clipboard-view") {
+        return args.get(p + 1).map(|f| Action::ClipboardView(f.clone(), args.get(p + 2).cloned().unwrap_or_default()));
     }
     if let Some(p) = args.iter().position(|a| a == "__palette-activate") {
         return args.get(p + 1)?.parse().ok().map(Action::PaletteActivate);
@@ -136,45 +145,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn handle_clipboard_push() -> Result<(), Box<dyn std::error::Error>> {
-    use std::io::Read;
-    let mut input = String::new();
-    std::io::stdin().read_to_string(&mut input)?;
-    if input.trim().is_empty() {
-        return Ok(());
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        // Check if clipboard contains secret markers
-        if let Ok(output) = std::process::Command::new("wl-paste").arg("--list-types").output() {
-            let mimes = String::from_utf8_lossy(&output.stdout);
-            for line in mimes.lines() {
-                let lower = line.to_lowercase();
-                if lower.contains("password") || lower.contains("concealedtype") {
-                    info!("KDE watcher: ignoring copy marked as secret/password hint");
-                    return Ok(());
-                }
-            }
-        }
-
-        // Send to primary daemon over session D-Bus
-        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
-        rt.block_on(async {
-            if let Ok(conn) = zbus::Connection::session().await {
-                let _ = conn
-                    .call_method(
-                        Some("org.menew.ClipboardService"),
-                        "/org/menew/Clipboard",
-                        Some("org.menew.ClipboardService"),
-                        "PushClipboardText",
-                        &(input.as_str(), "text/plain"),
-                    )
-                    .await;
-            }
-        });
-    }
-
-    Ok(())
+    menew_clipboard::run_push_helper()
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -225,7 +196,7 @@ fn run_gtk_app(args: Vec<String>) {
 
     let palette_cell: Rc<RefCell<Option<Rc<menew_ui::PaletteWindow>>>> = Rc::new(RefCell::new(None));
 
-    let watcher_cell: Rc<RefCell<Option<menew_clipboard::WatcherGuard>>> =
+    let watcher_cell: Rc<RefCell<Option<Rc<RefCell<menew_clipboard::WatcherControl>>>>> =
         Rc::new(RefCell::new(None));
 
     // connect_startup is guaranteed to execute ONLY on the primary instance
@@ -247,6 +218,13 @@ fn run_gtk_app(args: Vec<String>) {
         // 2. Create Palette Window and init ClipboardService
         let config = menew_core::Config::load();
         let state: menew_ui::SharedState = Rc::new(RefCell::new(menew_ui::PaletteState::from_config(&config)));
+        // the clipboard service: pause state shared with the watcher control, events to the palette
+        let pause = Arc::new(std::sync::Mutex::new(menew_core::clip_policy::PauseState::load()));
+        let (clip_tx, mut clip_rx) = mpsc::unbounded_channel::<menew_clipboard::ClipEvent>();
+        let clipboard_service = Arc::new(ClipboardService::new(db.clone()).with_pause(Arc::clone(&pause)).with_events(clip_tx));
+        let _ = db.drop_missing_images();
+        clipboard_service.prune();
+        let control = Rc::new(RefCell::new(menew_clipboard::WatcherControl::new(Arc::clone(&pause))));
         let (status_tx, status_rx) = mpsc::unbounded_channel::<TrayStatus>();
         // pushes the countdown to the tray whenever it changes
         let last_status = Rc::new(RefCell::new(TrayStatus::default()));
@@ -254,8 +232,10 @@ fn run_gtk_app(args: Vec<String>) {
             let state = Rc::clone(&state);
             let last = Rc::clone(&last_status);
             let tx = status_tx.clone();
+            let svc = Arc::clone(&clipboard_service);
             Rc::new(move || {
-                let status = alerts::tray_status(&state.borrow(), alerts::now(), menew_core::current_language());
+                let mut status = alerts::tray_status(&state.borrow(), alerts::now(), menew_core::current_language());
+                status.paused = svc.is_paused();
                 if *last.borrow() != status {
                     info!("Tray status: {:?} {:?}", status.title(), status.lines);
                     *last.borrow_mut() = status.clone();
@@ -263,10 +243,66 @@ fn run_gtk_app(args: Vec<String>) {
                 }
             })
         };
-        let palette = menew_ui::PaletteWindow::create(application, db.clone(), Rc::clone(&state), Rc::clone(&push_status));
+        let hooks = {
+            let (s1, s2, s3, s4, s5) = (
+                Arc::clone(&clipboard_service),
+                Arc::clone(&clipboard_service),
+                Arc::clone(&clipboard_service),
+                Arc::clone(&clipboard_service),
+                Arc::clone(&clipboard_service),
+            );
+            let (c1, c2) = (Rc::clone(&control), Rc::clone(&control));
+            menew_ui::ClipHooks {
+                pause: Rc::new(move |m| {
+                    s1.pause(m);
+                    c1.borrow_mut().sync();
+                }),
+                resume: Rc::new(move || {
+                    s2.resume();
+                    c2.borrow_mut().sync();
+                }),
+                is_paused: Rc::new(move || s3.is_paused()),
+                expect_own: Rc::new(move |k, skip| s4.expect_own_write(k, skip)),
+                queue_ocr: Rc::new(move || s5.queue_ocr()),
+            }
+        };
+        let palette = menew_ui::PaletteWindow::create(application, db.clone(), Rc::clone(&state), Rc::clone(&push_status), hooks);
         *p_startup.borrow_mut() = Some(Rc::clone(&palette));
         let db_tray = db.clone();
-        let clipboard_service = Arc::new(ClipboardService::new(db));
+
+        // copies reach the palette (paste queue, open list) on the GTK thread
+        {
+            let p = Rc::clone(&palette);
+            glib::MainContext::default().spawn_local(async move {
+                while let Some(ev) = clip_rx.recv().await {
+                    match ev {
+                        menew_clipboard::ClipEvent::Saved { id, own } => {
+                            if !own {
+                                p.on_clip_saved(id);
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        // text of the images that were not read yet, a little after the start (like the Mac)
+        {
+            let svc = Arc::clone(&clipboard_service);
+            glib::timeout_add_seconds_local_once(10, move || svc.queue_ocr());
+            let svc = Arc::clone(&clipboard_service);
+            glib::timeout_add_seconds_local(3600, move || {
+                svc.prune();
+                glib::ControlFlow::Continue
+            });
+        }
+        // the watcher follows the pause, also when a timed pause ends
+        {
+            let c = Rc::clone(&control);
+            glib::timeout_add_seconds_local(2, move || {
+                c.borrow_mut().sync();
+                glib::ControlFlow::Continue
+            });
+        }
 
         // 3. Setup communication channels
         let (tray_tx, mut tray_rx) = mpsc::unbounded_channel::<TrayCommand>();
@@ -288,7 +324,8 @@ fn run_gtk_app(args: Vec<String>) {
         });
 
         // 5. Start KDE watcher child
-        *w_startup.borrow_mut() = menew_clipboard::start_kde_data_control_listener();
+        control.borrow_mut().sync();
+        *w_startup.borrow_mut() = Some(Rc::clone(&control));
 
         // 6. Start System Tray
         rt_startup.spawn(async move {
@@ -318,6 +355,8 @@ fn run_gtk_app(args: Vec<String>) {
 
         // 8. Connect channel receivers into GLib main context
         let p_tray = Rc::clone(&palette);
+        let tray_svc = Arc::clone(&clipboard_service);
+        let tray_ctl = Rc::clone(&control);
         let app_handle = application.clone();
         glib::MainContext::default().spawn_local(async move {
             while let Some(cmd) = tray_rx.recv().await {
@@ -328,6 +367,16 @@ fn run_gtk_app(args: Vec<String>) {
                         Ok(n) => info!("Tray: cleared {} unpinned clipboard entries", n),
                         Err(e) => warn!("Tray: failed to clear clipboard history: {}", e),
                     },
+                    TrayCommand::TogglePause => {
+                        if tray_svc.is_paused() {
+                            tray_svc.resume();
+                        } else {
+                            tray_svc.pause(None);
+                        }
+                        tray_ctl.borrow_mut().sync();
+                        p_tray.queue_changed();
+                    }
+                    TrayCommand::PasteNext => p_tray.paste_next(),
                     TrayCommand::Quit => app_handle.quit(),
                 }
             }
@@ -339,6 +388,7 @@ fn run_gtk_app(args: Vec<String>) {
                 match ev {
                     ShortcutEvent::TogglePalette => p_short.toggle(),
                     ShortcutEvent::ToggleClipboard => p_short.toggle_mode(PaletteMode::Clipboard),
+                    ShortcutEvent::PasteNext => p_short.paste_next(),
                 }
             }
         });
@@ -400,6 +450,16 @@ fn run_gtk_app(args: Vec<String>) {
                     palette.test_query(&text);
                 }
             }
+            Action::PasteNext => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    palette.paste_next();
+                }
+            }
+            Action::ClipboardView(filter, query) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    palette.test_clipboard_view(&filter, &query);
+                }
+            }
             Action::PaletteActivate(index) => {
                 if let Some(palette) = p_cmd.borrow().as_ref() {
                     let found = palette.test_activate(index);
@@ -424,7 +484,9 @@ fn run_gtk_app(args: Vec<String>) {
     let w_shutdown = Rc::clone(&watcher_cell);
     app.connect_shutdown(move |_| {
         info!("GApplication shutdown: stopping clipboard watcher");
-        w_shutdown.borrow_mut().take();
+        if let Some(c) = w_shutdown.borrow_mut().take() {
+            c.borrow_mut().stop();
+        }
     });
 
     // Run application passing real command line arguments
@@ -465,6 +527,13 @@ mod tests {
     fn clipboard_opens_clipboard_mode() {
         assert_eq!(decide(&v(&["clipboard"]), true, false), Action::ShowClipboard);
         assert_eq!(decide(&v(&["clipboard"]), false, false), Action::ShowClipboard);
+    }
+
+    #[test]
+    fn paste_next_and_the_clipboard_view_hook() {
+        assert_eq!(decide(&v(&["paste-next"]), true, false), Action::PasteNext);
+        assert_eq!(decide(&v(&["__clipboard-view", "image", "x"]), true, true), Action::ClipboardView("image".into(), "x".into()));
+        assert_eq!(decide(&v(&["__clipboard-view", "image"]), true, false), Action::ShowPalette);
     }
 
     #[test]

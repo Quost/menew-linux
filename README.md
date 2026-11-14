@@ -23,6 +23,11 @@ Linux port of [Menew for macOS](https://github.com/Quost/menew), in progress.
   - **Enter** copies the entry and hides the palette, **Ctrl+P** pins or unpins it, **Ctrl+Delete** deletes it.
   - If `/dev/uinput` is writable, Menew also presses Ctrl+V in the app you came from. Otherwise it only copies and shows "Copied. Press Ctrl+V to paste".
   - Content marked as a password by a password manager is never saved.
+  - **Images and files** are kept too (images as files in `~/.local/share/menew/clipboard/`), with a thumbnail and a preview pane. Filters (All, Text, Links, Images, Files, Pinned, Snippets) with **Alt+Left/Right**. The text inside copied images is read with `tesseract` on your computer, so search finds it.
+  - **Ctrl+K** (or right click) opens the actions of the entry: paste, copy only, add to the paste queue, pin, smart actions (call, WhatsApp, maps, write an e-mail, track a package, copy a color as HEX/RGB/HSL, join a meeting), copy the text of an image, show the file, delete.
+  - **Pause** capture for 15 minutes, 1 hour or until you resume: nothing is read while paused. Apps listed in `clipboard_ignored_apps` (`config.json`) are skipped on GNOME.
+  - **Paste queue**: turn it on, copy several things, then run **Paste next** (`Ctrl+Alt+N`, `menew paste-next`, tray or palette) once per item.
+  - **Snippets** with `{date}`, `{time}`, `{weekday}`, `{tomorrow}`, `{clipboard}`, `{cursor}` and `{input:Name}`, in the palette and in the Snippets filter.
 - **Tray icon**: Open palette, Clipboard history, Clear history (keeps pinned entries), Start at login, Quit.
 - **Start at login** is opt-in (off by default): it creates `~/.config/autostart/menew.desktop`, and unchecking it in the tray removes the file again.
 - UI in English, Portuguese, German, Spanish and Chinese (from `LC_ALL` / `LANG`).
@@ -42,7 +47,8 @@ Linux port of [Menew for macOS](https://github.com/Quost/menew), in progress.
 - Timers, alarms and the focus session live only in memory (quitting Menew cancels them). Your recent picks are stored in `~/.local/share/menew/recents.json` (item ids only, never copied text), and your scripts, quick links and world clocks in `~/.local/share/menew/scripts` and `~/.config/menew/config.json`.
 - Scripts only run when you pick them in the palette.
 - Copies flagged by password managers (`x-kde-passwordManagerHint`, `CONCEALED` and similar) are ignored.
-- "Clear history" in the tray deletes every unpinned entry.
+- "Clear history" in the tray deletes every unpinned entry and the image files that go with them.
+- Images and files copied are stored locally (images in `~/.local/share/menew/clipboard/`). A copy marked as a password is never read, whatever it holds (text, image or files), and while the capture is paused the clipboard is not read at all. Reading the text of images runs `tesseract` locally; nothing is uploaded.
 - The optional paste simulation only writes a Ctrl+V key press to `/dev/uinput`; it never reads keyboard input.
 
 ## Architecture
@@ -152,6 +158,9 @@ The palette also opens from the global shortcuts or the tray menu.
 | Palette | `Up` / `Down`, `Enter`, `Esc` | move, run or copy, close |
 | Clipboard mode | `Ctrl+P` | pin or unpin the selected entry |
 | Clipboard mode | `Ctrl+Delete` | delete the selected entry |
+| Clipboard mode | `Ctrl+K` | actions of the selected entry (also right click) |
+| Clipboard mode | `Alt+Left` / `Alt+Right` | previous or next filter |
+| Global (GlobalShortcuts portal) | `Ctrl+Alt+N` | paste the next item of the paste queue (`menew paste-next`) |
 
 The portal is available on KDE Plasma and GNOME 48+. On GNOME 45-47 create two custom shortcuts in
 Settings (Keyboard, Custom Shortcuts) that run `menew toggle` and `menew clipboard`.

@@ -38,7 +38,7 @@ pub fn defaults() -> Vec<QuickLink> {
         QuickLink::new("yt", "YouTube", "https://www.youtube.com/results?search_query={q}"),
         QuickLink::new("wiki", "Wikipedia", "https://wikipedia.org/w/index.php?search={q}"),
         QuickLink::new("gh", "GitHub", "https://github.com/search?q={q}"),
-        QuickLink::new("maps", "Apple Maps", "https://maps.apple.com/?q={q}"),
+        QuickLink::new("maps", "OpenStreetMap", "https://www.openstreetmap.org/search?query={q}"),
     ]
 }
 
@@ -174,8 +174,8 @@ mod tests {
     fn urls_for_the_default_links() {
         assert_eq!(link("g").url_for("coffee").as_deref(), Some("https://www.google.com/search?q=coffee"));
         assert_eq!(link("gh").url_for("menew").as_deref(), Some("https://github.com/search?q=menew"));
-        assert_eq!(link("maps").url_for("paulista").as_deref(), Some("https://maps.apple.com/?q=paulista"));
-        assert_eq!(link("maps").url_for("avenida paulista").as_deref(), Some("https://maps.apple.com/?q=avenida%20paulista"));
+        assert_eq!(link("maps").url_for("paulista").as_deref(), Some("https://www.openstreetmap.org/search?query=paulista"));
+        assert_eq!(link("maps").url_for("avenida paulista").as_deref(), Some("https://www.openstreetmap.org/search?query=avenida%20paulista"));
         assert_eq!(link("yt").url_for("lo-fi beats").as_deref(), Some("https://www.youtube.com/results?search_query=lo-fi%20beats"));
         assert_eq!(link("wiki").url_for("ação").as_deref(), Some("https://wikipedia.org/w/index.php?search=a%C3%A7%C3%A3o"));
         assert_eq!(link("g").url_for("c++ & rust").as_deref(), Some("https://www.google.com/search?q=c%2B%2B%20%26%20rust"));

@@ -131,8 +131,8 @@ be there and `@N` is the item at position N (0-based).
 | V066 | en | - | - | g coffee | link.g | Google: coffee | https://www.google.com/search?q=coffee | open:https://www.google.com/search?q=coffee | QuickLinkStore.paletteItems |
 | V067 | en | - | - | g coffee | !link.search | * | * | * | QuickLinkStore.webSearchItem (a keyword hides web search) |
 | V068 | en | - | - | gh menew | link.gh | GitHub: menew | https://github.com/search?q=menew | open:https://github.com/search?q=menew | QuickLinkStore.defaults |
-| V069 | en | - | - | maps paulista | link.maps | Apple Maps: paulista | https://maps.apple.com/?q=paulista | open:https://maps.apple.com/?q=paulista | QuickLinkStore.defaults |
-| V070 | en | - | - | maps avenida paulista | link.maps | Apple Maps: avenida paulista | https://maps.apple.com/?q=avenida%20paulista | open:https://maps.apple.com/?q=avenida%20paulista | QuickLink.url(for:) |
+| V069 | en | - | - | maps paulista | link.maps | OpenStreetMap: paulista | https://www.openstreetmap.org/search?query=paulista | open:https://www.openstreetmap.org/search?query=paulista | QuickLinkStore.defaults (Linux: OpenStreetMap instead of Apple Maps) |
+| V070 | en | - | - | maps avenida paulista | link.maps | OpenStreetMap: avenida paulista | https://www.openstreetmap.org/search?query=avenida%20paulista | open:https://www.openstreetmap.org/search?query=avenida%20paulista | QuickLink.url(for:) |
 | V071 | en | - | - | jira ABC-123 | link.jira | Jira: ABC-123 | https://company.atlassian.net/browse/ABC-123 | open:https://company.atlassian.net/browse/ABC-123 | custom link keeps the capitals of the typed text |
 | V072 | en | - | - | g | link.g | Google: type what to search | https://www.google.com/search?q={q} | none | QuickLinkStore.paletteItems (needsText and no text) |
 | V073 | en | - | - | github.com/quost | link.open | Open github.com | https://github.com/quost | open:https://github.com/quost | QuickLinkStore.webAddress |

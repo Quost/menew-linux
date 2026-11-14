@@ -7,7 +7,8 @@ Not released yet. The first release will come when the core of the Mac app is po
 ### What works
 
 - **Command palette** with the behaviour of the Mac app: apps and Menew actions, recent picks first, math and unit conversions, currencies (the rate is fetched only when you press Enter), time zones, text transforms of the copied text with a live preview, a JWT decoder, UUID and Unix timestamps, quick links and web search, emoji and symbols, timers and alarms (countdown in the tray, notification and sound at the end), the focus timer and script commands (Raycast headers).
-- **Clipboard history**: a second palette mode with search. Pinned entries first, Enter copies, Ctrl+P pins, Ctrl+Delete deletes. Copies flagged by password managers are never saved.
+- **Clipboard history**: text, links, images and files with search, filters, pause, a paste queue, smart actions, OCR of images and snippets (see docs/clipboard-spec.md). Pinned entries first, Enter copies, Ctrl+P pins, Ctrl+Delete deletes. Copies flagged by password managers are never saved.
+- **Clipboard, Phase 5 (parity with the Mac)**: images and files with previews, filters, pause (15 min, 1 h, until resumed; nothing is read while paused), ignored apps (GNOME), paste queue with "Paste next" (`Ctrl+Alt+N`, `menew paste-next`), smart actions, text of images with `tesseract` (the `.deb` recommends `tesseract-ocr`), snippets with variables, history limits (300 entries, at least 20). Vectors from the Mac code in `docs/clipboard-spec.md`.
 - **Paste**: if `/dev/uinput` is writable, Menew presses Ctrl+V in the app you came from. Otherwise it copies and shows "Copied. Press Ctrl+V to paste" (the default).
 - **Tray icon** with Open palette, Clipboard history, Clear history, Start at login and Quit. Start at login is opt-in.
 - UI in English, Portuguese, German, Spanish and Chinese.

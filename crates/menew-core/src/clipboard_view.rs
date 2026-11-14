@@ -89,14 +89,7 @@ mod tests {
     use super::*;
 
     fn e(id: i64, pinned: bool, created_at: i64) -> ClipboardEntry {
-        ClipboardEntry {
-            id,
-            content_type: "text/plain".into(),
-            text_content: format!("t{id}"),
-            char_count: 2,
-            is_pinned: pinned,
-            created_at,
-        }
+        ClipboardEntry::text_entry(id, &format!("t{id}"), pinned, created_at)
     }
 
     #[test]

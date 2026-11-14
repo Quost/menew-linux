@@ -29,11 +29,29 @@ pub struct Config {
     pub world_clocks: Vec<String>,
     /// A 5 minute break after a focus session (on by default, like the Mac).
     pub focus_breaks: bool,
+    /// Apps whose copies are not kept (`ignoredApps` on the Mac): the application id or window class,
+    /// e.g. "org.keepassxc.KeePassXC". Only applied where the desktop tells which app copied (GNOME).
+    pub clipboard_ignored_apps: Vec<String>,
+    /// How many unpinned entries the history keeps (`maxItems`: 300, never below 20).
+    pub clipboard_max_items: usize,
+    /// Entries older than this many days are removed; 0 keeps them (`autoDeleteDays`).
+    pub clipboard_auto_delete_days: u32,
+    /// Read the text of copied images with tesseract (`clipboardOCR`, on by default).
+    pub clipboard_ocr: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { paste_mode: PasteMode::Auto, quick_links: None, world_clocks: vec![], focus_breaks: true }
+        Self {
+            paste_mode: PasteMode::Auto,
+            quick_links: None,
+            world_clocks: vec![],
+            focus_breaks: true,
+            clipboard_ignored_apps: vec![],
+            clipboard_max_items: crate::clip_item::DEFAULT_MAX_ITEMS,
+            clipboard_auto_delete_days: 0,
+            clipboard_ocr: true,
+        }
     }
 }
 

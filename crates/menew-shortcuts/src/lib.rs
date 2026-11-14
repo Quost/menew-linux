@@ -5,6 +5,8 @@ use tracing::{info, warn};
 pub enum ShortcutEvent {
     TogglePalette,
     ToggleClipboard,
+    /// Paste the next item of the paste queue.
+    PasteNext,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,11 +60,14 @@ mod linux_impl {
         let clipboard_shortcut =
             NewShortcut::new("toggle_clipboard", menew_core::t("shortcut_clipboard_desc"))
                 .preferred_trigger(Some("Control+Alt+V"));
+        let paste_next_shortcut =
+            NewShortcut::new("paste_next", menew_core::t("shortcut_paste_next_desc"))
+                .preferred_trigger(Some("Control+Alt+N"));
 
         let response = match global_shortcuts
             .bind_shortcuts(
                 &session,
-                &[shortcut, clipboard_shortcut],
+                &[shortcut, clipboard_shortcut, paste_next_shortcut],
                 Default::default(),
             )
             .await
@@ -103,6 +108,9 @@ mod linux_impl {
                     "toggle_clipboard" => {
                         let _ = tx.send(ShortcutEvent::ToggleClipboard);
                     }
+                    "paste_next" => {
+                        let _ = tx.send(ShortcutEvent::PasteNext);
+                    }
                     _ => {}
                 }
             }
@@ -133,6 +141,10 @@ mod linux_impl {
         eprintln!("     Name:     Menew Clipboard");
         eprintln!("     Command:  menew clipboard");
         eprintln!("     Shortcut: Ctrl+Alt+V");
+        eprintln!("   And for the paste queue, a third one:");
+        eprintln!("     Name:     Menew Paste Next");
+        eprintln!("     Command:  menew paste-next");
+        eprintln!("     Shortcut: Ctrl+Alt+N");
         eprintln!("====================================================================");
         eprintln!();
     }
@@ -165,7 +177,9 @@ mod tests {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         tx.send(ShortcutEvent::TogglePalette).unwrap();
         tx.send(ShortcutEvent::ToggleClipboard).unwrap();
+        tx.send(ShortcutEvent::PasteNext).unwrap();
         assert_eq!(rx.recv().await, Some(ShortcutEvent::TogglePalette));
         assert_eq!(rx.recv().await, Some(ShortcutEvent::ToggleClipboard));
+        assert_eq!(rx.recv().await, Some(ShortcutEvent::PasteNext));
     }
 }

@@ -38,7 +38,10 @@ pub fn tray_status(state: &PaletteState, now: f64, lang: Language) -> TrayStatus
         }
         lines.push(if c.label.is_empty() { format!("{label} {value}") } else { format!("{label} {value}: {}", c.label) });
     }
-    TrayStatus { summary: parts.join(" \u{b7} "), lines }
+    if state.queue.is_on() {
+        parts.push(format!("{} {}", tr("queue_label", lang, &[]), state.queue.len()));
+    }
+    TrayStatus { summary: parts.join(" \u{b7} "), lines, paused: false, queue: state.queue.len() }
 }
 
 /// Fire what is due at `now`. Returns true when something ended (the tray needs a refresh).

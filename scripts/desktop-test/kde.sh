@@ -139,15 +139,18 @@ cat > "$TEST_ROOT/fakebin/wl-paste" <<'STUB'
 [ "$1" = "--list-types" ] && { printf 'text/plain
 x-kde-passwordManagerHint
 '; exit 0; }
-exit 1
+[ -n "${STUB_DATA:-}" ] && cat "$STUB_DATA"
+exit 0
 STUB
 chmod +x "$TEST_ROOT/fakebin/wl-paste"
-printf 'secret-kde-pw' | PATH="$TEST_ROOT/fakebin:$PATH" "$MENEW_BIN" __clipboard-push 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | sed 's/^/INFO: helper: /' || true
+printf 'secret-kde-pw' > "$TEST_ROOT/stub-data"
+printf 'secret-kde-pw' | STUB_DATA="$TEST_ROOT/stub-data" PATH="$TEST_ROOT/fakebin:$PATH" "$MENEW_BIN" __clipboard-push 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | sed 's/^/INFO: helper: /' || true
 sleep 1
 if db_has "secret-kde-pw"; then fail "password-hint copy was saved"; else pass "helper ignored a copy whose MIME list has x-kde-passwordManagerHint (stubbed wl-paste)"; fi
 # control: same helper path with a plain MIME list must be saved, so the test above is meaningful
 sed -i 's/x-kde-passwordManagerHint//' "$TEST_ROOT/fakebin/wl-paste"
-printf 'control-kde-plain' | PATH="$TEST_ROOT/fakebin:$PATH" "$MENEW_BIN" __clipboard-push >/dev/null 2>&1 || true
+printf 'control-kde-plain' > "$TEST_ROOT/stub-data"
+printf 'control-kde-plain' | STUB_DATA="$TEST_ROOT/stub-data" PATH="$TEST_ROOT/fakebin:$PATH" "$MENEW_BIN" __clipboard-push >/dev/null 2>&1 || true
 if wait_for 5 db_has "control-kde-plain"; then pass "control: same helper path saves a copy without the hint"; else fail "control copy not saved; the password test above is inconclusive"; fi
 
 # check 3: tray registered
@@ -190,6 +193,28 @@ de_screenshot() {
     fi
 }
 if [ "$PIPELINE_OK" = "1" ]; then phase2_checks; palette_checks; else skip "Phase 2 and palette checks need the wl-copy pipeline (see SKIP above)"; fi
+source "$HERE/phase5.sh"
+de_copy_png() { wl-copy --type image/png < "$1"; }
+de_copy_uris() { printf '%s\r\n' "$1" | wl-copy --type text/uri-list; }
+de_pause_probe() {
+    if [ -z "$(pgrep -P "$MENEW_PID" -x wl-paste)" ]; then pass "no wl-paste process exists while paused: nothing can read the clipboard"; else fail "a wl-paste watcher is still running during the pause"; fi
+}
+if [ "$PIPELINE_OK" = "1" ]; then
+    phase5_checks
+    # an image copy marked as a password, through the real helper with a stubbed wl-paste (a two-type selection cannot be made headless)
+    mkdir -p "$TEST_ROOT/fakebin2"
+    printf '#!/bin/sh\n[ "$1" = "--list-types" ] && { printf "image/png\nx-kde-passwordManagerHint\n"; exit 0; }\ncat "$STUB_DATA"\n' > "$TEST_ROOT/fakebin2/wl-paste"
+    chmod +x "$TEST_ROOT/fakebin2/wl-paste"
+    convert -background white -fill black -pointsize 40 label:"HINTED IMAGE" "$TEST_ROOT/hinted.png"
+    imgs_before="$(count_kind image)"; files_before="$(ls "$(images_dir)" | wc -l)"
+    : | STUB_DATA="$TEST_ROOT/hinted.png" PATH="$TEST_ROOT/fakebin2:$PATH" "$MENEW_BIN" __clipboard-push 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | sed 's/^/INFO: helper: /' || true
+    sleep 1
+    if [ "$(count_kind image)" = "$imgs_before" ] && [ "$(ls "$(images_dir)" | wc -l)" = "$files_before" ]; then pass "the helper ignored an image copy whose type list has x-kde-passwordManagerHint (no entry, no file; stubbed wl-paste)"; else fail "an image with a password hint was saved"; fi
+    # control: the same path without the hint saves it
+    sed -i 's/x-kde-passwordManagerHint//' "$TEST_ROOT/fakebin2/wl-paste"
+    : | STUB_DATA="$TEST_ROOT/hinted.png" PATH="$TEST_ROOT/fakebin2:$PATH" "$MENEW_BIN" __clipboard-push >/dev/null 2>&1 || true
+    if wait_for 5 bash -c "[ \"\$(sqlite3 '$MENEW_DB_PATH' \"SELECT COUNT(*) FROM clipboard_entries WHERE kind='image'\")\" -gt $imgs_before ]"; then pass "control: the same helper path keeps the image without the hint"; else fail "control image not saved; the hint test is inconclusive"; fi
+else skip "Phase 5 checks need the wl-copy pipeline (see SKIP above)"; fi
 
 # check 4: quit leaves no wl-paste
 "$MENEW_BIN" quit >/dev/null 2>&1 || true
