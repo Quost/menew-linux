@@ -1,0 +1,8 @@
+{
+  "name": "Menew Integration",
+  "description": "Bridges GNOME Wayland clipboard events to Menew daemon via D-Bus",
+  "uuid": "menew-bridge@menew.web.app",
+  "shell-version": [ "45", "46", "47", "48", "49", "50", "51" ],
+  "url": "https://menew.web.app",
+  "version": 1
+}

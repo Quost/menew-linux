@@ -1,0 +1,15 @@
+[package]
+name = "menew-shortcuts"
+version = "0.1.0"
+edition = "2021"
+description = "Global shortcut handling via XDG Desktop Portal for Menew Linux"
+license = "MIT"
+
+[dependencies]
+menew-core = { path = "../menew-core" }
+tokio = { version = "1.0", features = ["full"] }
+futures-util = "0.3"
+tracing = "0.1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "0.10", default-features = false, features = ["tokio", "tracing"] }

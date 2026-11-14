@@ -1,0 +1,10 @@
+[workspace]
+members = [
+    "crates/menew-core",
+    "crates/menew-tray",
+    "crates/menew-shortcuts",
+    "crates/menew-clipboard",
+    "crates/menew-ui",
+    "crates/menew",
+]
+resolver = "2"

@@ -1,0 +1,21 @@
+[package]
+name = "menew"
+version = "0.1.0"
+edition = "2021"
+description = "Menew for Linux: native, private productivity utility"
+license = "MIT"
+
+[dependencies]
+menew-core = { path = "../menew-core" }
+menew-tray = { path = "../menew-tray" }
+menew-shortcuts = { path = "../menew-shortcuts" }
+menew-clipboard = { path = "../menew-clipboard" }
+menew-ui = { path = "../menew-ui" }
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libadwaita = { version = "0.7", package = "libadwaita" }
+gtk4 = { version = "0.9", package = "gtk4" }
+zbus = { version = "5", default-features = false, features = ["tokio"] }

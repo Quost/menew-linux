@@ -1,0 +1,14 @@
+[package]
+name = "menew-tray"
+version = "0.1.0"
+edition = "2021"
+description = "System tray service via StatusNotifierItem (ksni) for Menew Linux"
+license = "MIT"
+
+[dependencies]
+menew-core = { path = "../menew-core" }
+tokio = { version = "1.0", features = ["full"] }
+tracing = "0.1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ksni = "0.3"
