@@ -30,8 +30,8 @@ priority = "optional"
 extended-description = """\
 Private, native command palette and clipboard history for GNOME and KDE Plasma on Wayland.
 The GNOME Shell clipboard extension is installed but not enabled; enable it yourself."""
-depends = "$auto"
-recommends = "wl-clipboard"
+depends = "$auto, curl"
+recommends = "wl-clipboard, fonts-noto-color-emoji"
 assets = [
     ["target/release/menew", "usr/bin/menew", "755"],
     ["../../data/app.menew.Menew.desktop", "usr/share/applications/app.menew.Menew.desktop", "644"],

@@ -1,4 +1,6 @@
 #[cfg(target_os = "linux")]
+mod alerts;
+#[cfg(target_os = "linux")]
 use std::cell::RefCell;
 #[cfg(target_os = "linux")]
 use std::rc::Rc;
@@ -21,10 +23,10 @@ use menew_core::{set_language, ClipboardDatabase, Language};
 #[cfg(target_os = "linux")]
 use menew_core::PaletteMode;
 use menew_shortcuts::ShortcutEvent;
-use menew_tray::TrayCommand;
+use menew_tray::{TrayCommand, TrayStatus};
 
 /// What the primary instance should do for a given command line.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Action {
     /// Start in the background (tray only), palette hidden.
     StayHidden,
@@ -37,6 +39,10 @@ enum Action {
     SelectClipboard(usize),
     PinClipboard(usize),
     DeleteClipboard(usize),
+    /// Test hooks (only with `MENEW_TEST=1`): open the palette, type this text, log the results.
+    PaletteQuery(String),
+    /// Test hook: press Enter on the Nth (0-based) result of the current search.
+    PaletteActivate(usize),
     Quit,
 }
 
@@ -44,14 +50,16 @@ enum Action {
 /// was forwarded from another process to the already-running primary instance.
 /// `test_mode` is true when the daemon runs with `MENEW_TEST=1`, which enables the hidden test commands.
 fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
+    // the test hooks come first: their text argument may be a word like "quit"
+    if let Some(action) = test_mode.then(|| test_action(args)).flatten() {
+        return action;
+    }
     if args.iter().any(|a| a == "quit") {
         Action::Quit
     } else if args.iter().any(|a| a == "toggle") {
         Action::TogglePalette
     } else if args.iter().any(|a| a == "clipboard") {
         Action::ShowClipboard
-    } else if let Some(action) = test_mode.then(|| test_action(args)).flatten() {
-        action
     } else if is_remote {
         Action::ShowPalette
     } else {
@@ -59,8 +67,15 @@ fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
     }
 }
 
-/// Parse `__select-clipboard|__pin-clipboard|__delete-clipboard <index>`.
+/// Parse `__select-clipboard|__pin-clipboard|__delete-clipboard <index>`, `__palette-query <text>`
+/// and `__palette-activate <index>`.
 fn test_action(args: &[String]) -> Option<Action> {
+    if let Some(p) = args.iter().position(|a| a == "__palette-query") {
+        return args.get(p + 1).map(|t| Action::PaletteQuery(t.clone()));
+    }
+    if let Some(p) = args.iter().position(|a| a == "__palette-activate") {
+        return args.get(p + 1)?.parse().ok().map(Action::PaletteActivate);
+    }
     let (pos, make): (usize, fn(usize) -> Action) =
         if let Some(p) = args.iter().position(|a| a == "__select-clipboard") {
             (p, Action::SelectClipboard)
@@ -175,7 +190,8 @@ fn run_stub_app() {
         let (tray_tx, mut tray_rx) = mpsc::unbounded_channel::<TrayCommand>();
         let (shortcut_tx, mut shortcut_rx) = mpsc::unbounded_channel::<ShortcutEvent>();
 
-        let _ = menew_tray::start_tray(tray_tx).await;
+        let (_status_tx, status_rx) = mpsc::unbounded_channel::<TrayStatus>();
+        let _ = menew_tray::start_tray(tray_tx, status_rx).await;
         let _ = menew_shortcuts::register_and_listen(shortcut_tx).await;
 
         tokio::select! {
@@ -229,7 +245,25 @@ fn run_gtk_app(args: Vec<String>) {
         };
 
         // 2. Create Palette Window and init ClipboardService
-        let palette = menew_ui::PaletteWindow::create(application, db.clone());
+        let config = menew_core::Config::load();
+        let state: menew_ui::SharedState = Rc::new(RefCell::new(menew_ui::PaletteState::from_config(&config)));
+        let (status_tx, status_rx) = mpsc::unbounded_channel::<TrayStatus>();
+        // pushes the countdown to the tray whenever it changes
+        let last_status = Rc::new(RefCell::new(TrayStatus::default()));
+        let push_status: Rc<dyn Fn()> = {
+            let state = Rc::clone(&state);
+            let last = Rc::clone(&last_status);
+            let tx = status_tx.clone();
+            Rc::new(move || {
+                let status = alerts::tray_status(&state.borrow(), alerts::now(), menew_core::current_language());
+                if *last.borrow() != status {
+                    info!("Tray status: {:?} {:?}", status.title(), status.lines);
+                    *last.borrow_mut() = status.clone();
+                    let _ = tx.send(status);
+                }
+            })
+        };
+        let palette = menew_ui::PaletteWindow::create(application, db.clone(), Rc::clone(&state), Rc::clone(&push_status));
         *p_startup.borrow_mut() = Some(Rc::clone(&palette));
         let db_tray = db.clone();
         let clipboard_service = Arc::new(ClipboardService::new(db));
@@ -258,7 +292,7 @@ fn run_gtk_app(args: Vec<String>) {
 
         // 6. Start System Tray
         rt_startup.spawn(async move {
-            if let Err(e) = menew_tray::start_tray(tray_tx).await {
+            if let Err(e) = menew_tray::start_tray(tray_tx, status_rx).await {
                 warn!("Could not start tray service (StatusNotifierItem): {}", e);
             }
         });
@@ -268,6 +302,19 @@ fn run_gtk_app(args: Vec<String>) {
             let status = menew_shortcuts::register_and_listen(shortcut_tx).await;
             info!("Shortcut portal status: {:?}", status);
         });
+
+        // 7b. Tick the timers, alarms and focus session once a second
+        {
+            let state = Rc::clone(&state);
+            let app = application.clone();
+            let push = Rc::clone(&push_status);
+            glib::timeout_add_seconds_local(1, move || {
+                let lang = menew_core::current_language();
+                alerts::tick(&app, &mut state.borrow_mut(), alerts::now(), lang);
+                push();
+                glib::ControlFlow::Continue
+            });
+        }
 
         // 8. Connect channel receivers into GLib main context
         let p_tray = Rc::clone(&palette);
@@ -346,6 +393,17 @@ fn run_gtk_app(args: Vec<String>) {
                     };
                     let found = palette.test_clipboard_op(op, index);
                     info!("Test hook: {:?} clipboard entry {} -> found={}", op, index, found);
+                }
+            }
+            Action::PaletteQuery(text) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    palette.test_query(&text);
+                }
+            }
+            Action::PaletteActivate(index) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    let found = palette.test_activate(index);
+                    info!("Test hook: activate palette result {} -> found={}", index, found);
                 }
             }
             Action::ShowPalette => {
@@ -431,6 +489,18 @@ mod tests {
             test_action(&v(&["__select-clipboard", "0"])),
             Some(Action::SelectClipboard(0))
         );
+    }
+
+    #[test]
+    fn palette_hooks_only_in_test_mode_and_their_text_is_not_a_command() {
+        let q = v(&["__palette-query", "5 km to mi"]);
+        assert_eq!(decide(&q, true, true), Action::PaletteQuery("5 km to mi".into()));
+        assert_eq!(decide(&q, true, false), Action::ShowPalette);
+        // a query that is the word of another command stays a query
+        assert_eq!(decide(&v(&["__palette-query", "quit"]), true, true), Action::PaletteQuery("quit".into()));
+        assert_eq!(decide(&v(&["__palette-activate", "0"]), true, true), Action::PaletteActivate(0));
+        assert_eq!(decide(&v(&["__palette-activate", "x"]), true, true), Action::ShowPalette);
+        assert_eq!(decide(&v(&["__palette-query"]), true, true), Action::ShowPalette);
     }
 
     #[test]

@@ -1,4 +1,37 @@
+use menew_core::focus::FocusTimer;
+use menew_core::quick_links::{self, QuickLink};
+use menew_core::recents::Recents;
+use menew_core::time_zones::Zone;
+use menew_core::timers::TimerStore;
+use menew_core::Config;
+use std::cell::RefCell;
+use std::rc::Rc;
 use tracing::info;
+
+/// State of the palette that outlives one search: recent picks, running timers, the focus session
+/// and what comes from `config.json`. Shared with the daemon, which ticks the timers.
+pub struct PaletteState {
+    pub recents: Recents,
+    pub timers: TimerStore,
+    pub focus: FocusTimer,
+    pub links: Vec<QuickLink>,
+    pub clocks: Vec<Zone>,
+}
+
+impl PaletteState {
+    pub fn from_config(cfg: &Config) -> Self {
+        let clocks = cfg.world_clocks.iter().filter_map(|id| menew_core::time_zones::named_zone(id)).collect();
+        Self {
+            recents: Recents::load(),
+            timers: TimerStore::default(),
+            focus: FocusTimer { breaks: cfg.focus_breaks, ..FocusTimer::default() },
+            links: cfg.quick_links.clone().unwrap_or_else(quick_links::defaults),
+            clocks,
+        }
+    }
+}
+
+pub type SharedState = Rc<RefCell<PaletteState>>;
 
 #[cfg(target_os = "linux")]
 pub mod palette {
@@ -9,14 +42,20 @@ pub mod palette {
     use gtk4::prelude::*;
     use libadwaita as adw;
     use libadwaita::prelude::*;
+    use menew_core::currency;
+    use menew_core::dev_tools;
+    use menew_core::focus::{NoHooks, EXTEND_MINUTES};
+    use menew_core::timers;
+    use menew_core::palette::{results, ClipHit, Icon, ItemAction, Kind, PaletteContext, PaletteItem};
+    use menew_core::script_commands::{self, Mode, Script};
+    use menew_core::strings::tr;
+    use menew_core::time_zones::TzCtx;
     use menew_core::{
-        age_between, decide_paste, evaluate_expression, format_age, format_result, preview,
-        sort_for_display, t, ClipboardDatabase, ClipboardEntry, Config, DesktopApp,
-        DesktopScanner, PaletteMode, PasteAction, PREVIEW_MAX_CHARS,
+        age_between, current_language, decide_paste, format_age, preview, sort_for_display, t, ClipboardDatabase,
+        ClipboardEntry, DesktopApp, DesktopScanner, Language, PaletteMode, PasteAction, PREVIEW_MAX_CHARS,
     };
     use std::cell::{Cell, RefCell};
-    use std::rc::Rc;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     /// Square window frame fix: the window itself is transparent and the rounded,
     /// bordered card is drawn by `.menew-card`.
@@ -43,6 +82,14 @@ pub mod palette {
             font-size: 0.85em;
             opacity: 0.7;
         }
+        .menew-glyph {
+            font-size: 1.5em;
+        }
+        .menew-section {
+            font-size: 0.85em;
+            font-weight: bold;
+            opacity: 0.7;
+        }
     ";
 
     const LIST_LIMIT: usize = 100;
@@ -50,6 +97,9 @@ pub mod palette {
     pub struct PaletteWindow {
         app: adw::Application,
         db: ClipboardDatabase,
+        state: SharedState,
+        /// Called after the palette changed timers or focus, so the daemon updates the tray.
+        on_state: Rc<dyn Fn()>,
         window: adw::ApplicationWindow,
         search_entry: gtk4::SearchEntry,
         list_box: gtk4::ListBox,
@@ -57,9 +107,15 @@ pub mod palette {
         hint_label: gtk4::Label,
         mode: Cell<PaletteMode>,
         apps: Rc<RefCell<Vec<DesktopApp>>>,
-        visible_apps: Rc<RefCell<Vec<Option<DesktopApp>>>>,
+        /// The items of the list in Apps mode, in the order of the rows.
+        items: Rc<RefCell<Vec<PaletteItem>>>,
         visible_entries: Rc<RefCell<Vec<ClipboardEntry>>>,
-        last_calc_result: Rc<RefCell<Option<String>>>,
+        /// Text of the clipboard as read by GTK while the palette is open.
+        clip_text: RefCell<Option<String>>,
+        scripts: RefCell<(Option<Instant>, Vec<Script>)>,
+        query_empty: Rc<Cell<bool>>,
+        /// The text the current list was built for.
+        last_query: RefCell<String>,
     }
 
     /// Operation simulated by the `MENEW_TEST=1` hooks.
@@ -75,8 +131,15 @@ pub mod palette {
         EntryId(i64),
     }
 
+    fn now_secs() -> f64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs_f64())
+            .unwrap_or(0.0)
+    }
+
     impl PaletteWindow {
-        pub fn create(app: &adw::Application, db: ClipboardDatabase) -> Rc<Self> {
+        pub fn create(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>) -> Rc<Self> {
             if let Some(display) = gdk::Display::default() {
                 let provider = gtk4::CssProvider::new();
                 provider.load_from_data(CSS);
@@ -160,9 +223,49 @@ pub mod palette {
 
             window.set_content(Some(&main_box));
 
+            let items: Rc<RefCell<Vec<PaletteItem>>> = Rc::new(RefCell::new(Vec::new()));
+            let query_empty = Rc::new(Cell::new(true));
+
+            // "Recent and suggested" above the first row of an empty search, "Try typing" above the tips
+            {
+                let items = Rc::clone(&items);
+                let query_empty = Rc::clone(&query_empty);
+                list_box.set_header_func(move |row, _before| {
+                    let items = items.borrow();
+                    let i = row.index();
+                    if i < 0 || items.is_empty() {
+                        row.set_header(gtk4::Widget::NONE);
+                        return;
+                    }
+                    let i = i as usize;
+                    let lang = current_language();
+                    let text = match items.get(i) {
+                        Some(it) if it.kind == Kind::Tip && (i == 0 || items[i - 1].kind != Kind::Tip) => Some(tr("try_typing", lang, &[])),
+                        Some(it) if i == 0 && query_empty.get() && it.kind != Kind::Tip => Some(tr("recent_suggested", lang, &[])),
+                        _ => None,
+                    };
+                    match text {
+                        Some(txt) => {
+                            let label = gtk4::Label::builder()
+                                .label(txt)
+                                .halign(gtk4::Align::Start)
+                                .margin_top(8)
+                                .margin_bottom(4)
+                                .margin_start(6)
+                                .css_classes(["menew-section"])
+                                .build();
+                            row.set_header(Some(&label));
+                        }
+                        None => row.set_header(gtk4::Widget::NONE),
+                    }
+                });
+            }
+
             let palette = Rc::new(Self {
                 app: app.clone(),
                 db,
+                state,
+                on_state,
                 window,
                 search_entry,
                 list_box,
@@ -170,9 +273,12 @@ pub mod palette {
                 hint_label,
                 mode: Cell::new(PaletteMode::Apps),
                 apps: Rc::new(RefCell::new(DesktopScanner::scan_all())),
-                visible_apps: Rc::new(RefCell::new(Vec::new())),
+                items,
                 visible_entries: Rc::new(RefCell::new(Vec::new())),
-                last_calc_result: Rc::new(RefCell::new(None)),
+                clip_text: RefCell::new(None),
+                scripts: RefCell::new((None, Vec::new())),
+                query_empty,
+                last_query: RefCell::new(String::new()),
             });
 
             palette.init_events();
@@ -235,6 +341,15 @@ pub mod palette {
                         self_key.delete_selected();
                         glib::Propagation::Stop
                     }
+                    // Ctrl+1..9 runs the Nth result (Cmd+1..9 on the Mac)
+                    k if ctrl
+                        && !in_clipboard
+                        && k.to_unicode().and_then(|c| c.to_digit(10)).map(|d| (1..=9).contains(&d)).unwrap_or(false) =>
+                    {
+                        let n = k.to_unicode().and_then(|c| c.to_digit(10)).unwrap_or(1) as usize - 1;
+                        self_key.activate_index(n);
+                        glib::Propagation::Stop
+                    }
                     _ => glib::Propagation::Proceed,
                 }
             });
@@ -287,26 +402,30 @@ pub mod palette {
             while let Some(child) = self.list_box.first_child() {
                 self.list_box.remove(&child);
             }
-            self.visible_apps.borrow_mut().clear();
+            self.items.borrow_mut().clear();
             self.visible_entries.borrow_mut().clear();
+            self.query_empty.set(query.trim().is_empty());
+            *self.last_query.borrow_mut() = query.to_string();
 
             match self.mode.get() {
-                PaletteMode::Apps => self.fill_apps(query.trim()),
+                PaletteMode::Apps => self.fill_apps(query),
                 PaletteMode::Clipboard => self.fill_clipboard(query.trim()),
             }
 
             let total = match self.mode.get() {
-                PaletteMode::Apps => self.visible_apps.borrow().len(),
+                PaletteMode::Apps => self.items.borrow().len(),
                 PaletteMode::Clipboard => self.visible_entries.borrow().len(),
             } as i32;
             if total == 0 {
-                let key = if self.mode.get() == PaletteMode::Clipboard && query.trim().is_empty() {
-                    "clipboard_empty"
+                let text = if self.mode.get() == PaletteMode::Clipboard && query.trim().is_empty() {
+                    t("clipboard_empty").to_string()
+                } else if self.mode.get() == PaletteMode::Clipboard {
+                    t("no_results").to_string()
                 } else {
-                    "no_results"
+                    tr("nothing_found", current_language(), &[query.trim()])
                 };
                 let empty_label = gtk4::Label::builder()
-                    .label(t(key))
+                    .label(text)
                     .margin_top(32)
                     .margin_bottom(32)
                     .css_classes(["dim-label"])
@@ -330,43 +449,84 @@ pub mod palette {
             }
         }
 
-        fn fill_apps(&self, clean_query: &str) {
-            if let Some(calc_val) = evaluate_expression(clean_query) {
-                let result_str = format_result(calc_val);
-                *self.last_calc_result.borrow_mut() = Some(result_str.clone());
-
-                let row = adw::ActionRow::builder()
-                    .title(&result_str)
-                    .subtitle(t("calc_result"))
-                    .icon_name("accessories-calculator")
-                    .build();
-
-                self.list_box.append(&row);
-                self.visible_apps.borrow_mut().push(None); // None represents calculation
-            } else {
-                *self.last_calc_result.borrow_mut() = None;
+        /// Scripts of the folder, re-read at most every 3 seconds (the palette asks on every key).
+        fn scripts(&self) -> Vec<Script> {
+            let mut cache = self.scripts.borrow_mut();
+            let stale = cache.0.map(|t| t.elapsed() > Duration::from_secs(3)).unwrap_or(true);
+            if stale {
+                *cache = (Some(Instant::now()), script_commands::scan(&script_commands::folder()));
             }
+            cache.1.clone()
+        }
 
-            let scored = DesktopScanner::search(&self.apps.borrow(), clean_query);
-            for item in scored.iter().take(20) {
-                let app = &item.app;
-                let subtitle = app
-                    .generic_name
-                    .as_deref()
-                    .or(app.comment.as_deref())
-                    .unwrap_or(&app.exec);
+        /// The text that transforms apply to: what GTK read from the clipboard, else the newest
+        /// history entry (GNOME does not give a background read, the extension fills the history).
+        fn clipboard_text(&self) -> Option<String> {
+            let gtk = self.clip_text.borrow().clone();
+            let text = gtk.or_else(|| {
+                self.db.get_newest().ok().flatten().map(|e| e.text_content)
+            });
+            text.filter(|t| !t.is_empty())
+        }
 
-                let icon_name = app.icon.as_deref().unwrap_or("application-x-executable");
-
-                let row = adw::ActionRow::builder()
-                    .title(&app.name)
-                    .subtitle(subtitle)
-                    .icon_name(icon_name)
-                    .build();
-
-                self.list_box.append(&row);
-                self.visible_apps.borrow_mut().push(Some(app.clone()));
+        fn fill_apps(self: &Rc<Self>, raw: &str) {
+            let lang = current_language();
+            let scripts = self.scripts();
+            let clip_text = if raw.trim().is_empty() { None } else { self.clipboard_text() };
+            let items = {
+                let state = self.state.borrow();
+                let apps = self.apps.borrow();
+                let ctx = PaletteContext {
+                    lang,
+                    apps: &apps,
+                    recents: &state.recents,
+                    clipboard_text: clip_text,
+                    tz: TzCtx::system(),
+                    links: &state.links,
+                    world_clocks: &state.clocks,
+                    timers: &state.timers,
+                    focus_running: state.focus.is_running(),
+                    scripts: &scripts,
+                    autostart_on: menew_core::autostart::is_enabled(),
+                };
+                let db = self.db.clone();
+                let clip_search = move |q: &str| -> Vec<ClipHit> {
+                    db.search(q, 6)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .map(|e| ClipHit { id: e.id, title: preview(&e.text_content, PREVIEW_MAX_CHARS), text: e.text_content })
+                        .collect()
+                };
+                results(&ctx, raw, &clip_search)
+            };
+            for item in &items {
+                self.list_box.append(&self.build_row(item, lang));
             }
+            *self.items.borrow_mut() = items;
+        }
+
+        fn build_row(&self, item: &PaletteItem, lang: Language) -> adw::ActionRow {
+            let row = adw::ActionRow::builder()
+                .title(&item.title)
+                .use_markup(false)
+                .title_lines(1)
+                .subtitle_lines(1)
+                .build();
+            if let Some(sub) = &item.subtitle {
+                row.set_subtitle(sub);
+            }
+            match &item.icon {
+                Icon::Symbol(name) => row.add_prefix(&gtk4::Image::from_icon_name(name)),
+                Icon::App(name) => {
+                    row.add_prefix(&gtk4::Image::from_icon_name(name.as_deref().unwrap_or("application-x-executable")))
+                }
+                Icon::Glyph(g) => row.add_prefix(&gtk4::Label::builder().label(g).css_classes(["menew-glyph"]).build()),
+            }
+            if let Some(sc) = &item.shortcut {
+                row.add_suffix(&gtk4::Label::builder().label(sc).css_classes(["dim-label", "caption"]).build());
+            }
+            row.add_suffix(&gtk4::Label::builder().label(item.kind.label(lang)).css_classes(["dim-label", "caption"]).build());
+            row
         }
 
         fn fill_clipboard(&self, clean_query: &str) {
@@ -422,12 +582,34 @@ pub mod palette {
             if mode == PaletteMode::Apps {
                 // Reload desktop files to catch newly installed apps
                 *self.apps.borrow_mut() = DesktopScanner::scan_all();
+                self.read_clipboard();
             }
             self.set_mode(mode);
             self.window.set_visible(true);
             self.window.present();
             self.search_entry.grab_focus();
             info!("Palette window presented and focused ({:?})", mode);
+        }
+
+        /// Read the clipboard text for the transforms (not when it carries a password hint).
+        fn read_clipboard(self: &Rc<Self>) {
+            *self.clip_text.borrow_mut() = None;
+            let Some(display) = gdk::Display::default() else { return };
+            let clipboard = display.clipboard();
+            let formats = clipboard.formats();
+            if formats.contain_mime_type("x-kde-passwordManagerHint") || formats.contain_mime_type("application/x-kde-passwordManagerHint") {
+                return;
+            }
+            let this = Rc::clone(self);
+            clipboard.read_text_async(gio::Cancellable::NONE, move |res| {
+                if let Ok(Some(text)) = res {
+                    *this.clip_text.borrow_mut() = Some(text.to_string());
+                    let q = this.search_entry.text().to_string();
+                    if this.window.is_visible() && this.mode.get() == PaletteMode::Apps && !q.trim().is_empty() {
+                        this.refresh_list(&q);
+                    }
+                }
+            });
         }
 
         /// Toggle with the given mode: hide when already visible in that mode.
@@ -447,7 +629,7 @@ pub mod palette {
 
         fn move_selection(self: &Rc<Self>, delta: i32) {
             let total = match self.mode.get() {
-                PaletteMode::Apps => self.visible_apps.borrow().len(),
+                PaletteMode::Apps => self.items.borrow().len(),
                 PaletteMode::Clipboard => self.visible_entries.borrow().len(),
             } as i32;
             if total == 0 {
@@ -482,31 +664,224 @@ pub mod palette {
                 return;
             }
 
-            // Drop borrow before calling self.hide() to prevent RefCell borrow_mut panic
-            let item_opt = {
-                let visible = self.visible_apps.borrow();
-                visible.get(index).cloned()
-            };
+            // GtkSearchEntry delays "search-changed" by 150 ms: make sure the list is the one for the
+            // text on screen before running anything (typing fast and pressing Enter).
+            let typed = self.search_entry.text().to_string();
+            if *self.last_query.borrow() != typed {
+                self.refresh_list(&typed);
+            }
 
-            if let Some(item_opt) = item_opt {
-                match item_opt {
-                    Some(app) => {
+            // Drop the borrow before hiding or running anything that may borrow again
+            let item = self.items.borrow().get(index).cloned();
+            let Some(item) = item else { return };
+            info!("Palette: running item {} ({})", item.id, item.action.describe());
+            if item.keep_open {
+                self.run_action(item.action);
+                return;
+            }
+            if item.remember {
+                let mut st = self.state.borrow_mut();
+                st.recents.remember(&item.id);
+                let _ = st.recents.save_to(&menew_core::recents::default_path());
+            }
+            self.hide();
+            // let the palette go away and the previous window get the keyboard back
+            let this = Rc::clone(self);
+            glib::timeout_add_local_once(Duration::from_millis(50), move || this.run_action(item.action));
+        }
+
+        // ---- what the items do ----
+
+        fn notify(&self, id: &str, title: &str, body: Option<&str>) {
+            let n = gio::Notification::new(title);
+            if let Some(b) = body {
+                n.set_body(Some(b));
+            }
+            self.app.send_notification(Some(id), &n);
+            info!("Notification sent: {}{}", title, body.map(|b| format!(" / {b}")).unwrap_or_default());
+        }
+
+        fn copied(&self, text: &str) {
+            self.copy_to_clipboard(text);
+            self.notify("menew-copied", &tr("copied_value", current_language(), &[text]), None);
+        }
+
+        fn open_uri(&self, uri: &str) {
+            match gio::AppInfo::launch_default_for_uri(uri, gio::AppLaunchContext::NONE) {
+                Ok(()) => info!("Opened {}", uri),
+                Err(e) => tracing::warn!("Could not open {}: {}", uri, e),
+            }
+        }
+
+        fn state_changed(&self) {
+            (self.on_state)();
+        }
+
+        fn run_action(self: &Rc<Self>, action: ItemAction) {
+            let lang = current_language();
+            match action {
+                ItemAction::None => {}
+                ItemAction::Copy(text) => self.copied(&text),
+                ItemAction::OpenUri(uri) => self.open_uri(&uri),
+                ItemAction::LaunchApp(id) => {
+                    let app = self.apps.borrow().iter().find(|a| a.id == id).cloned();
+                    if let Some(app) = app {
                         info!("Launching app from palette: {}", app.name);
                         if let Err(e) = app.launch() {
                             tracing::error!("Failed to launch app {}: {}", app.name, e);
                         }
-                        self.hide();
-                    }
-                    None => {
-                        let res = self.last_calc_result.borrow().clone();
-                        if let Some(res) = res {
-                            info!("Copying calculation result to clipboard: {}", res);
-                            self.copy_to_clipboard(&res);
-                        }
-                        self.hide();
                     }
                 }
+                ItemAction::PasteText(text) | ItemAction::PasteClip(text) => self.commit_clipboard_text(&text),
+                ItemAction::TransformCopy { transform, text } => match transform.apply(&text, lang) {
+                    None => self.notify("menew-text", transform.failure(lang), None),
+                    Some(result) if transform.is_info() => self.notify("menew-text", &result, None),
+                    Some(result) => {
+                        self.notify("menew-text", &tr("tt_done", lang, &[]), None);
+                        self.commit_clipboard_text(&result);
+                    }
+                },
+                ItemAction::FetchRate { amount, from, to } => {
+                    info!("Currency: fetching {} -> {} (requested with Enter)", from, to);
+                    let this = Rc::clone(self);
+                    glib::spawn_future_local(async move {
+                        let (f, t2) = (from.clone(), to.clone());
+                        let rate = gio::spawn_blocking(move || currency::fetch_rate(&f, &t2)).await.ok().flatten();
+                        match rate {
+                            Some(r) => info!("Currency: {} {} = {} {}", amount, from, amount * r, to),
+                            None => this.notify("menew-fx", &tr("fx_fail", lang, &[]), None),
+                        }
+                        let q = this.search_entry.text().to_string();
+                        if this.window.is_visible() {
+                            this.refresh_list(&q);
+                        }
+                    });
+                }
+                ItemAction::StartTimer { label, secs } => {
+                    let end = now_secs() + secs;
+                    self.state.borrow_mut().timers.add(&label, end, false);
+                    let when = timers::clock(end, &TzCtx::system(), lang);
+                    self.notify("menew-timer-new", &tr("toast_timer_set", lang, &[&when]), (!label.is_empty()).then_some(label.as_str()));
+                    self.state_changed();
+                }
+                ItemAction::StartAlarm { label, end } => {
+                    self.state.borrow_mut().timers.add(&label, end, true);
+                    let when = timers::clock(end, &TzCtx::system(), lang);
+                    self.notify("menew-timer-new", &tr("toast_alarm_set", lang, &[&when]), (!label.is_empty()).then_some(label.as_str()));
+                    self.state_changed();
+                }
+                ItemAction::CancelTimer(id) => {
+                    if self.state.borrow_mut().timers.cancel(id) {
+                        self.notify("menew-timer-new", &tr("timer_cancelled", lang, &[]), None);
+                        self.state_changed();
+                    }
+                }
+                ItemAction::FocusStart(minutes) => {
+                    self.state.borrow_mut().focus.start(minutes, now_secs(), &mut NoHooks);
+                    self.notify("menew-focus", &tr("toast_focus_started", lang, &[&minutes.to_string()]), None);
+                    self.state_changed();
+                }
+                ItemAction::FocusStop => {
+                    if self.state.borrow_mut().focus.stop(&mut NoHooks) {
+                        self.notify("menew-focus", &tr("focus_stopped", lang, &[]), None);
+                        self.state_changed();
+                    }
+                }
+                ItemAction::FocusExtend => {
+                    self.state.borrow_mut().focus.extend(EXTEND_MINUTES, now_secs());
+                    self.state_changed();
+                }
+                ItemAction::RunScript { script, argument } => self.run_script(script, argument),
+                ItemAction::OpenScriptsFolder => match script_commands::ensure_folder() {
+                    Ok(dir) => self.open_uri(&gio::File::for_path(&dir).uri()),
+                    Err(e) => tracing::warn!("Could not create the scripts folder: {}", e),
+                },
+                ItemAction::FillQuery(q) => {
+                    self.search_entry.set_text(&q);
+                    self.search_entry.set_position(-1);
+                    self.search_entry.grab_focus();
+                }
+                ItemAction::OpenClipboard => {
+                    self.show_mode(PaletteMode::Clipboard);
+                }
+                ItemAction::ClearClipboard => match self.db.clear_unpinned() {
+                    Ok(n) => info!("Palette: cleared {} unpinned clipboard entries", n),
+                    Err(e) => tracing::warn!("Palette: failed to clear clipboard history: {}", e),
+                },
+                ItemAction::ToggleAutostart => {
+                    let want = !menew_core::autostart::is_enabled();
+                    match menew_core::autostart::set_enabled(want) {
+                        Ok(()) => info!("Palette: Start at login set to {}", want),
+                        Err(e) => tracing::warn!("Palette: could not change autostart: {}", e),
+                    }
+                }
+                ItemAction::GenerateUuid => self.copied(&dev_tools::uuid_v4()),
+                ItemAction::CopyUnixTimestamp => self.copied(&dev_tools::now_secs().to_string()),
+                ItemAction::Quit => self.app.quit(),
             }
+        }
+
+        fn run_script(self: &Rc<Self>, script: Script, argument: Option<String>) {
+            let lang = current_language();
+            if script.argument.is_some() && argument.as_deref().unwrap_or("").is_empty() {
+                self.notify("menew-script", &tr("script_need_arg", lang, &[]), None);
+                return;
+            }
+            if script.mode != Mode::Silent {
+                self.notify("menew-script", &tr("script_running", lang, &[&script.title]), None);
+            }
+            let this = Rc::clone(self);
+            glib::spawn_future_local(async move {
+                let s = script.clone();
+                let result = gio::spawn_blocking(move || script_commands::execute(&s, argument.as_deref())).await;
+                let Ok(r) = result else { return };
+                let last = r.output.lines().rev().find(|l| !l.trim().is_empty()).map(str::to_string);
+                if r.status != 0 {
+                    let why = r
+                        .error
+                        .lines()
+                        .rev()
+                        .find(|l| !l.trim().is_empty())
+                        .map(str::to_string)
+                        .or(last)
+                        .unwrap_or_else(|| tr("script_code", lang, &[&r.status.to_string()]));
+                    this.notify("menew-script", &format!("{}: {}", script.title, why), None);
+                    return;
+                }
+                match script.mode {
+                    Mode::Silent => this.app.withdraw_notification("menew-script"),
+                    Mode::Compact | Mode::Inline => {
+                        let msg = last.unwrap_or_else(|| tr("script_done", lang, &[&script.title]));
+                        this.notify("menew-script", &msg, None);
+                    }
+                    Mode::FullOutput => {
+                        this.app.withdraw_notification("menew-script");
+                        this.show_output(&script.title, &r.output);
+                    }
+                }
+            });
+        }
+
+        /// The full output of a script in a small dialog, with a Copy button.
+        fn show_output(self: &Rc<Self>, title: &str, text: &str) {
+            let lang = current_language();
+            let dialog = adw::MessageDialog::new(gtk4::Window::NONE, Some(title), None);
+            let view = gtk4::TextView::builder().editable(false).monospace(true).wrap_mode(gtk4::WrapMode::WordChar).build();
+            view.buffer().set_text(text);
+            let scroll = gtk4::ScrolledWindow::builder().min_content_height(200).min_content_width(420).child(&view).build();
+            dialog.set_extra_child(Some(&scroll));
+            dialog.add_response("copy", &tr("copy", lang, &[]));
+            dialog.add_response("ok", &tr("ok", lang, &[]));
+            dialog.set_default_response(Some("ok"));
+            dialog.set_close_response("ok");
+            let this = Rc::clone(self);
+            let body = text.to_string();
+            dialog.connect_response(None, move |_, response| {
+                if response == "copy" {
+                    this.copy_to_clipboard(&body);
+                }
+            });
+            dialog.present();
         }
 
         // ---- clipboard mode actions ----
@@ -527,7 +902,7 @@ pub mod palette {
             self.copy_to_clipboard(text);
             self.hide();
 
-            let mode = Config::load().paste_mode;
+            let mode = menew_core::Config::load().paste_mode;
             let action = decide_paste(mode, menew_core::paste::uinput_writable());
             info!("Clipboard entry selected: paste mode {:?} -> {:?}", mode, action);
             match action {
@@ -536,16 +911,12 @@ pub mod palette {
                     let this = Rc::clone(self);
                     glib::spawn_future_local(async move {
                         // wait for focus to return to the previous window
-                        glib::timeout_future(Duration::from_millis(menew_core::paste::FOCUS_DELAY_MS))
-                            .await;
+                        glib::timeout_future(Duration::from_millis(menew_core::paste::FOCUS_DELAY_MS)).await;
                         let result = gio::spawn_blocking(menew_core::paste::inject_ctrl_v).await;
                         match result {
                             Ok(Ok(())) => info!("Injected Ctrl+V through uinput"),
                             other => {
-                                tracing::warn!(
-                                    "uinput paste failed ({:?}); falling back to notification",
-                                    other
-                                );
+                                tracing::warn!("uinput paste failed ({:?}); falling back to notification", other);
                                 this.notify_copied();
                             }
                         }
@@ -606,7 +977,37 @@ pub mod palette {
             exists
         }
 
-        pub fn copy_to_clipboard(self: &Rc<Self>, text: &str) {
+        /// Test hook (`MENEW_TEST=1 menew __palette-query "<text>"`): open the palette in Apps mode,
+        /// type `text` in the search box and log the results (kind, title, subtitle).
+        pub fn test_query(self: &Rc<Self>, text: &str) {
+            self.show_mode(PaletteMode::Apps);
+            self.search_entry.set_text(text);
+            self.refresh_list(text);
+            let lang = current_language();
+            let items = self.items.borrow();
+            info!("Test hook: palette query {:?} -> {} results", text, items.len());
+            for (i, it) in items.iter().enumerate().take(12) {
+                info!(
+                    "Test hook: result[{}] [{}] {} | {} | {}",
+                    i,
+                    it.kind.label(lang),
+                    it.title,
+                    it.subtitle.clone().unwrap_or_default(),
+                    it.action.describe()
+                );
+            }
+        }
+
+        /// Test hook (`MENEW_TEST=1 menew __palette-activate <index>`): press Enter on that result.
+        pub fn test_activate(self: &Rc<Self>, index: usize) -> bool {
+            let exists = index < self.items.borrow().len();
+            if exists {
+                self.activate_index(index);
+            }
+            exists
+        }
+
+        pub fn copy_to_clipboard(&self, text: &str) {
             if let Some(display) = gdk::Display::default() {
                 let clipboard = display.clipboard();
                 clipboard.set_text(text);

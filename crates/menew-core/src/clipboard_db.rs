@@ -156,6 +156,29 @@ impl ClipboardDatabase {
         Ok(entries)
     }
 
+    /// The most recently copied entry, whether or not it is pinned (the palette applies text
+    /// transforms to it when the clipboard cannot be read directly).
+    pub fn get_newest(&self) -> Result<Option<ClipboardEntry>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, content_type, text_content, char_count, is_pinned, created_at
+             FROM clipboard_entries
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map([], |row| {
+            Ok(ClipboardEntry {
+                id: row.get(0)?,
+                content_type: row.get(1)?,
+                text_content: row.get(2)?,
+                char_count: row.get::<_, i64>(3)? as usize,
+                is_pinned: row.get::<_, i32>(4)? != 0,
+                created_at: row.get(5)?,
+            })
+        })?;
+        rows.next().transpose()
+    }
+
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<ClipboardEntry>> {
         let pattern = format!("%{}%", escape_like(query));
         let conn = self.conn.lock().unwrap();
@@ -218,6 +241,19 @@ impl ClipboardDatabase {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn newest_ignores_pins() {
+        let db = ClipboardDatabase::open_in_memory().unwrap();
+        assert_eq!(db.get_newest().unwrap(), None);
+        let old = db.save_text("old").unwrap().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        db.save_text("new").unwrap();
+        db.toggle_pinned(old).unwrap();
+        // get_recent lists the pinned one first, get_newest the last one copied
+        assert_eq!(db.get_recent(1).unwrap()[0].text_content, "old");
+        assert_eq!(db.get_newest().unwrap().unwrap().text_content, "new");
+    }
 
     #[test]
     fn test_clipboard_db_crud() {

@@ -189,7 +189,7 @@ de_screenshot() {
 ' ' ')"
     fi
 }
-if [ "$PIPELINE_OK" = "1" ]; then phase2_checks; else skip "Phase 2 checks need the wl-copy pipeline (see SKIP above)"; fi
+if [ "$PIPELINE_OK" = "1" ]; then phase2_checks; palette_checks; else skip "Phase 2 and palette checks need the wl-copy pipeline (see SKIP above)"; fi
 
 # check 4: quit leaves no wl-paste
 "$MENEW_BIN" quit >/dev/null 2>&1 || true

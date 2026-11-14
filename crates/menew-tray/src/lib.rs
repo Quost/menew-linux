@@ -1,4 +1,4 @@
-use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 use tracing::info;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,6 +10,27 @@ pub enum TrayCommand {
     Quit,
 }
 
+/// What the tray shows besides the menu: the countdown of the nearest timer or focus session, in
+/// the StatusNotifierItem `Title` and `ToolTip` properties. Empty means nothing is running.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TrayStatus {
+    /// Short text, e.g. "FOCUS 24m · TIMER 9m". Empty when idle.
+    pub summary: String,
+    /// One line per running timer or focus session (the tooltip body).
+    pub lines: Vec<String>,
+}
+
+impl TrayStatus {
+    /// The `Title` property: "Menew" when idle, "Menew · FOCUS 24m" while something runs.
+    pub fn title(&self) -> String {
+        if self.summary.is_empty() {
+            "Menew".to_string()
+        } else {
+            format!("Menew \u{b7} {}", self.summary)
+        }
+    }
+}
+
 #[cfg(target_os = "linux")]
 mod linux_impl {
     use super::*;
@@ -18,8 +39,7 @@ mod linux_impl {
 
     pub struct MenewTray {
         tx: UnboundedSender<TrayCommand>,
-        /// Mirrors the presence of ~/.config/autostart/menew.desktop
-        autostart: bool,
+        status: TrayStatus,
     }
 
     impl ksni::Tray for MenewTray {
@@ -28,7 +48,16 @@ mod linux_impl {
         }
 
         fn title(&self) -> String {
-            "Menew".to_string()
+            self.status.title()
+        }
+
+        fn tool_tip(&self) -> ksni::ToolTip {
+            ksni::ToolTip {
+                icon_name: "menew-symbolic".to_string(),
+                icon_pixmap: vec![],
+                title: self.status.title(),
+                description: self.status.lines.join("\n"),
+            }
         }
 
         fn icon_name(&self) -> String {
@@ -73,18 +102,13 @@ mod linux_impl {
                 MenuItem::Separator,
                 CheckmarkItem {
                     label: menew_core::t("tray_start_at_login").to_string(),
-                    checked: self.autostart,
-                    activate: Box::new(|this: &mut Self| {
-                        let want = !this.autostart;
+                    // read the real state: the palette can change it too
+                    checked: menew_core::autostart::is_enabled(),
+                    activate: Box::new(|_this: &mut Self| {
+                        let want = !menew_core::autostart::is_enabled();
                         match menew_core::autostart::set_enabled(want) {
-                            Ok(()) => {
-                                this.autostart = want;
-                                info!("Tray: Start at login set to {}", want);
-                            }
-                            Err(e) => {
-                                tracing::warn!("Tray: could not change autostart: {}", e);
-                                this.autostart = menew_core::autostart::is_enabled();
-                            }
+                            Ok(()) => info!("Tray: Start at login set to {}", want),
+                            Err(e) => tracing::warn!("Tray: could not change autostart: {}", e),
                         }
                     }),
                     ..Default::default()
@@ -104,12 +128,17 @@ mod linux_impl {
         }
     }
 
+    /// Register the tray, then keep applying the status updates until the channel closes.
     pub async fn start_tray(
         tx: UnboundedSender<TrayCommand>,
-    ) -> Result<ksni::Handle<MenewTray>, Box<dyn std::error::Error + Send + Sync>> {
-        let tray = MenewTray { tx, autostart: menew_core::autostart::is_enabled() };
+        mut status_rx: UnboundedReceiver<TrayStatus>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let tray = MenewTray { tx, status: TrayStatus::default() };
         let handle = tray.spawn().await?;
-        Ok(handle)
+        while let Some(status) = status_rx.recv().await {
+            handle.update(|t| t.status = status.clone()).await;
+        }
+        Ok(())
     }
 }
 
@@ -117,13 +146,12 @@ mod linux_impl {
 mod stub_impl {
     use super::*;
 
-    pub struct DummyHandle;
-
     pub async fn start_tray(
         _tx: UnboundedSender<TrayCommand>,
-    ) -> Result<DummyHandle, Box<dyn std::error::Error + Send + Sync>> {
+        _status_rx: UnboundedReceiver<TrayStatus>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         info!("Tray stub initialized (non-Linux environment)");
-        Ok(DummyHandle)
+        Ok(())
     }
 }
 
@@ -136,6 +164,13 @@ pub use stub_impl::start_tray;
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn title_shows_the_countdown() {
+        assert_eq!(TrayStatus::default().title(), "Menew");
+        let s = TrayStatus { summary: "FOCUS 24m".into(), lines: vec![] };
+        assert_eq!(s.title(), "Menew \u{b7} FOCUS 24m");
+    }
 
     #[tokio::test]
     async fn test_tray_command_channel() {

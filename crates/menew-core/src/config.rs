@@ -2,6 +2,7 @@
 //!
 //! Reading never fails: a missing, unreadable or malformed file yields the defaults.
 
+use crate::quick_links::QuickLink;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -17,10 +18,23 @@ pub enum PasteMode {
     CopyOnly,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub paste_mode: PasteMode,
+    /// Quick links of the palette (`{q}` is where the typed text goes). When the key is missing the
+    /// default list of the Mac app is used; when present it replaces that list.
+    pub quick_links: Option<Vec<QuickLink>>,
+    /// World clocks: tz database names ("Europe/Lisbon"). Settings come in Phase 11.
+    pub world_clocks: Vec<String>,
+    /// A 5 minute break after a focus session (on by default, like the Mac).
+    pub focus_breaks: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self { paste_mode: PasteMode::Auto, quick_links: None, world_clocks: vec![], focus_breaks: true }
+    }
 }
 
 /// Resolve the user config directory from the environment values (pure, testable).
@@ -92,7 +106,7 @@ mod tests {
     fn save_then_load_round_trips() {
         let dir = tempfile::tempdir().unwrap();
         let path = Config::path_in(dir.path());
-        let cfg = Config { paste_mode: PasteMode::CopyOnly };
+        let cfg = Config { paste_mode: PasteMode::CopyOnly, ..Config::default() };
         cfg.save_to(&path).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("\"copy-only\""), "{text}");

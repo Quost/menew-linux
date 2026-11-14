@@ -14,19 +14,19 @@ Licence: GPL-3.0-only, the same as the Mac app; name and icon under `TRADEMARK.m
 |---|---|---|---|---|
 | Open with a global shortcut (⌃⌥Space) | ✅ | 🟡 | R1 | GlobalShortcuts portal (KDE, GNOME 48+); fallback `menew toggle` as a system shortcut. Not tested on a real desktop. |
 | Find and launch apps | ✅ | ✅ | R1 | `.desktop` files. |
-| Recent picks first | ✅ | ⬜ | R1 | |
-| Menew actions in the palette | ✅ | ⬜ | R1 | Every Linux action (quick actions, windows, screenshots...) must be reachable. |
-| Math (`12*7.5`, `20% of 340`) | ✅ | ✅ | R1 | |
-| Unit conversions (`5 km to mi`, `72 f to c`) | ✅ | ⬜ | R1 | |
-| Currency conversion (`100 usd to brl`, fetched on ↩) | ✅ | ⬜ | R1 | The only network call, started by the user; same rule as the Mac. |
-| Time zones (`3pm ny to lisbon`) and world clocks | ✅ | ⬜ | R1 | |
-| Text transforms (case, accents, sort/dedupe, JSON, Base64, URL, counts) with live preview | ✅ | ⬜ | R1 | |
-| Developer tools (JWT decode, UUID, Unix timestamp) | ✅ | ⬜ | R1 | |
-| Quick links (`g`, `gh`, `maps`, `yt`, `wiki`, custom `{q}`), open typed addresses, web search | ✅ | ⬜ | R1 | |
-| Emoji and symbols (`emoji rocket`, `:fire`, arrow/degree/euro) | ✅ | ⬜ | R1 | |
-| Timers and alarms (`timer 10m tea`, `alarm 7:30`), countdown in the tray | ✅ | ⬜ | R1 | |
-| Focus timer (`focus 50`) | ✅ | ⬜ | R1 | |
-| Script commands (shell/Python/Node/Ruby, Raycast headers) | ✅ | ⬜ | R1 | AppleScript ❌. |
+| Recent picks first | ✅ | ✅ | R1 | Last 20 items, most recent first, +60 score decaying by 3 (same as the Mac); stored as ids in `~/.local/share/menew/recents.json`. `recents.rs`. |
+| Menew actions in the palette | ✅ | 🟡 | R1 | Generic `PaletteItem` / `ItemAction` list in `palette.rs`. Already there: clipboard history, clear history, start at login, start/stop/+5 min focus, generate UUID, copy Unix timestamp, open scripts folder, quit. The actions of later phases (quick actions, windows, screenshots, notes, snippets...) plug into the same list when they exist. The Mac's "smart" items for the copied text (phone, address, color...) come with the clipboard phase. |
+| Math (`12*7.5`, `20% of 340`) | ✅ | ✅ | R1 | Own parser like the Mac: `+ - * / ^ x × ÷ % ! √`, `pi`, `e`, `sqrt sin cos tan log ln abs round`, `2(3+1)`, `200+10%`. Decimal comma or point; result uses the language's decimal separator. `calculator.rs`. |
+| Unit conversions (`5 km to mi`, `72 f to c`) | ✅ | ✅ | R1 | Same unit list and aliases as the Mac (length, mass, volume, data, time, speed, area, temperature) and the same connectors in 5 languages. `conversions.rs`. |
+| Currency conversion (`100 usd to brl`, fetched on ↩) | ✅ | ✅ | R1 | Same 24 currencies and provider (ECB through `api.frankfurter.app`), fetched only on Enter, cached 6 h. The request goes through the system `curl` (no HTTP/TLS crate in the tree). Currency text (`$100.00`, `R$ 100,00`, `100,00 €`) follows hand-written locale rules instead of Foundation's. `currency.rs`. |
+| Time zones (`3pm ny to lisbon`) and world clocks | ✅ | 🟡 | R1 | Time zones: same aliases (pt, en, de, es, zh) and cities of the tz database, DST through `date` with `TZ` (needs tzdata and coreutils). World clocks: the list is in `~/.config/menew/config.json` (`world_clocks`) and typing `clocks` shows them in the palette; the card at the top of the Now tab and the settings window come in Phase 11. `time_zones.rs`. |
+| Text transforms (case, accents, sort/dedupe, JSON, Base64, URL, counts) with live preview | ✅ | ✅ | R1 | All 20 transforms, with the same keywords in 5 languages and the preview (first 200 characters, `⏎` between lines, none above 100,000 bytes). Applies to the clipboard text read by GTK while the palette is open, else the newest history entry. Word counts use letter and digit runs, not Apple's word breaker. `text_transforms.rs`. |
+| Developer tools (JWT decode, UUID, Unix timestamp) | ✅ | ✅ | R1 | JWT (with `exp`/`iat`/`nbf` dates), UUID v4, Unix timestamp now, and a pasted 10 or 13 digit timestamp shown as a date (Enter copies the ISO date). The long date text is written by hand per language and can differ from macOS. `dev_tools.rs`. |
+| Quick links (`g`, `gh`, `maps`, `yt`, `wiki`, custom `{q}`), open typed addresses, web search | ✅ | ✅ | R1 | Same six defaults (`maps` is Apple Maps on the web, as on the Mac; edit `quick_links` in `config.json` to use another map). Custom links live in `~/.config/menew/config.json` until the settings window (Phase 11). Opens with the default browser. `quick_links.rs`. |
+| Emoji and symbols (`emoji rocket`, `:fire`, arrow/degree/euro) | ✅ | ✅ | R1 | Same filter and word table as the Mac; names come from the Unicode data of the build host (`emoji_data.rs`, generated). The Apple logo symbol is left out. Pasting uses the same path as the clipboard (uinput or copy + notification). `emoji.rs`. |
+| Timers and alarms (`timer 10m tea`, `alarm 7:30`), countdown in the tray | ✅ | ✅ | R1 | Countdown in the StatusNotifierItem `Title` and `ToolTip` (KDE shows the tooltip; GNOME depends on the AppIndicator extension). At the end: a notification and the sound of the freedesktop theme (`canberra-gtk-play`, else `paplay`, else a beep). In memory only. The Mac's HUD toasts ("Copied: x", "Timer until 9:10") are desktop notifications here. `timers.rs`, `crates/menew/src/alerts.rs`. |
+| Focus timer (`focus 50`) | ✅ | 🟡 | R1 | Same flow: 25 min default, `focus N` (1 to 600), +5 min, stop, 5 min break (`focus_breaks` in `config.json`), notification and sound at the end, countdown in the tray. The options that mute the microphone, keep the computer awake or pause the clipboard while focusing are the `FocusHooks` trait, empty today: they come with the quick actions (Phase 9) and the clipboard pause (Phase 5). `focus.rs`. |
+| Script commands (shell/Python/Node/Ruby, Raycast headers) | ✅ | ✅ | R1 | Folder `~/.local/share/menew/scripts`, "Open scripts folder" creates it with an example, Raycast (and `@menew.`) headers: title, icon, mode (silent, compact, fullOutput, inline) and `argument1` as the text after the title. Runs with a 2 minute limit, `~/.local/bin` and `/usr/local/bin` added to `PATH`. AppleScript files are ignored (❌: no Linux equivalent). `script_commands.rs`. |
 | Snippets in the palette | ✅ | ⬜ | R1 | |
 | Notes in the palette | ✅ | ⬜ | R1 | |
 | Quick reminders (`remind ...`) | ✅ | 🔁 | | No system Reminders app: Evolution Data Server (GNOME) / Akonadi (KDE), or Menew's own reminders with notifications. |
@@ -164,10 +164,12 @@ Licence: GPL-3.0-only, the same as the Mac app; name and icon under `TRADEMARK.m
 
 ## Release 1 summary
 
-Done: app search, math, text clipboard with search/pins/password filter, tray basics, opt-in autostart, packaging (.deb verified; AppImage being fixed).
+Done: the command palette with the behaviour of the Mac app (apps, recent picks, math, conversions, currency on Enter, time zones, text transforms, dev tools, quick links, emoji, timers and alarms with the countdown in the tray, focus, script commands; spec and test vectors in `docs/palette-spec.md`), text clipboard with search/pins/password filter, tray basics, opt-in autostart, packaging (.deb verified; AppImage being fixed).
+
+Still open in the palette: Menew actions of the later phases, snippets and notes (Phases 5 and 6), the focus options that need quick actions (Phases 5 and 9), the world clocks card (Phase 11). Not on the Mac R1 list and not done: quick reminders, translation, Ask AI and natural-language commands (`remind`, `lembrar`, `faz`, `mach`, `haz`, `ia`, `ki`).
 
 To build for R1 (grouped into relay phases in `docs/plan-mvp.md`):
-1. Palette: recent picks, Menew actions, conversions, currency, time zones, text transforms, dev tools, quick links, emoji, timers/alarms/focus, script commands, snippets and notes inside it.
+1. Palette: DONE in Phase 4 except the Menew actions of later phases, snippets and notes inside it.
 2. Clipboard: images and files, filters, pause, ignore apps (GNOME), paste queue, smart actions, OCR of images, snippets with variables.
 3. Notes with protected and password notes.
 4. Screenshots: capture, annotate, OCR, QR.

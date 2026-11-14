@@ -12,11 +12,19 @@ bash scripts/desktop-test/gnome.sh            # headless GNOME Shell + the bridg
 bash scripts/desktop-test/kde.sh              # headless KWin + wl-paste watcher
 ```
 
-Screenshots land in `docs/desktop-tests/`: `gnome-palette.png`, `kde-palette.png` (Apps mode) and
-`gnome-clipboard.png`, `kde-clipboard.png` (clipboard mode, fake data only).
+Screenshots land in `docs/desktop-tests/`: `gnome-palette.png`, `kde-palette.png` (Apps mode),
+`gnome-clipboard.png`, `kde-clipboard.png` (clipboard mode, fake data only) and
+`<de>-palette-units.png`, `<de>-palette-emoji.png` (the palette with `5 km to mi` and `emoji rocket`).
+The palette checks (`palette_checks` in `lib.sh`) also read the daemon log for the results of `5 km to mi`,
+`snake_case` (on a copied text), `emoji rocket`, `100 usd to brl` (and that no currency request is made while
+typing), `timer 1m test` and `focus 1`, read the countdown from the tray's StatusNotifierItem `Title` and
+`ToolTip` properties over D-Bus, and wait for a `timer 3s done` to end (notification and sound lines in the log).
+The sound in these sessions is the display beep: no `canberra-gtk-play` or `paplay` is installed.
 The daemon is pointed at a temporary database with the test hook `MENEW_DB_PATH`, and is started
 with `MENEW_TEST=1`, which enables the hidden commands `__select-clipboard`, `__pin-clipboard` and
-`__delete-clipboard <index>` (0-based). The scripts exit with the real status of the run
+`__delete-clipboard <index>` (0-based), and the palette hooks `__palette-query "<text>"` (open the palette,
+type the text, log the results as `Test hook: result[N] [Kind] title | subtitle | action`) and
+`__palette-activate <index>` (Enter on the Nth result). The scripts exit with the real status of the run
 (`dbus-run-session` itself does not pass it on, so it goes through a file).
 
 To read the exit status from Windows use `wsl.exe --exec`; a plain `wsl.exe -- bash -lc "...; echo $?"`

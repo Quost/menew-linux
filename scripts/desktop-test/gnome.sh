@@ -195,6 +195,7 @@ de_screenshot() {
     if [ -s "$TEST_ROOT/shot2.png" ]; then cp "$TEST_ROOT/shot2.png" "$1"; rm -f "$TEST_ROOT/shot2.png"; else info "Screenshot -> $res"; fi
 }
 phase2_checks
+palette_checks
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "RESULT: all checks passed"; else echo "RESULT: $FAILS check(s) FAILED"; fi

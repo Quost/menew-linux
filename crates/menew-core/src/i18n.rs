@@ -252,7 +252,7 @@ pub fn t_in(key: &'static str, lang: Language) -> &'static str {
             Language::Zh => "打开 Menew 剪贴板历史",
             Language::En => "Open Menew Clipboard History",
         },
-        _ => key,
+        _ => crate::strings::lookup(key, lang).unwrap_or(key),
     }
 }
 

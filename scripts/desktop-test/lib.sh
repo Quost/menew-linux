@@ -208,3 +208,103 @@ phase2_checks() {
     if wait_for 5 unpinned_zero; then pass "tray 'Clear history' removed every unpinned entry"; else fail "unpinned entries remain after 'Clear history'"; fi
     if db_has "$FIRST_TEXT" && [ "$(db_pinned "$FIRST_TEXT")" = "1" ]; then pass "pinned entry '$FIRST_TEXT' survived 'Clear history'"; else fail "pinned entry was removed by 'Clear history'"; fi
 }
+
+# ---- Phase 4: palette results (units, text transforms, emoji, currency, timers, focus) ----
+
+# log_since <line> : the daemon log after that line, without colour codes
+log_since() { tail -n +"$(($1 + 1))" "$MENEW_LOG" | sed 's/\x1b\[[0-9;]*m//g'; }
+log_lines() { wc -l < "$MENEW_LOG"; }
+
+# palette_query <text> : type the text in the palette (MENEW_TEST=1 hook) and wait until the results are logged
+PQ_START=0
+palette_query() {
+    PQ_START="$(log_lines)"
+    MENEW_TEST=1 "$MENEW_BIN" __palette-query "$1" >/dev/null 2>&1 || true
+    wait_for 10 bash -c "tail -n +$((PQ_START + 1)) '$MENEW_LOG' | grep -a -q 'Test hook: palette query'"
+}
+# palette_has <text> : the results of the last query contain that text
+palette_has() { log_since "$PQ_START" | grep -a -F -q -- "$1"; }
+palette_show() { log_since "$PQ_START" | grep -a 'Test hook' | head -5; }
+
+# tray_prop <dest> <property> : a StatusNotifierItem property over D-Bus
+tray_prop() {
+    gdbus call --session --dest "$1" --object-path /StatusNotifierItem \
+        --method org.freedesktop.DBus.Properties.Get org.kde.StatusNotifierItem "$2" 2>&1
+}
+tray_title_has() { tray_prop "$TRAY_DEST" Title | grep -a -q -- "$1"; }
+
+# palette_shot <case> : screenshot of the palette as it is now, docs/desktop-tests/<de>-palette-<case>.png
+palette_shot() {
+    local png="$REPO_ROOT/docs/desktop-tests/$DE-palette-$1.png" colors
+    sleep 2
+    rm -f "$png"
+    de_screenshot "$png"
+    if [ -s "$png" ]; then
+        colors="$(distinct_colors "$png")"
+        if [ "${colors:-0}" -gt 20 ]; then pass "screenshot docs/desktop-tests/$DE-palette-$1.png ($(stat -c %s "$png") bytes, $colors colours)"; else fail "the $1 screenshot looks blank ($colors colours)"; fi
+    else
+        fail "no screenshot for the $1 case"
+    fi
+}
+
+# palette_checks : the results the palette shows for typed text, with a screenshot of two of them.
+# The calling script defines DE (kde|gnome), de_copy <text> and de_screenshot <png>.
+palette_checks() {
+    # 1. units: "5 km to mi" -> 3.1069 mi
+    if palette_query "5 km to mi"; then
+        if palette_has "result[0] [Calculator] 3.1069 mi | 5 km | copy:3.1069 mi"; then pass "palette '5 km to mi' shows '3.1069 mi' (detail '5 km') first"; else fail "palette '5 km to mi' did not show 3.1069 mi first"; palette_show; fi
+    else
+        fail "palette '5 km to mi': no results logged (the __palette-query hook did not answer)"
+    fi
+    palette_shot units
+
+    # 2. text transform of the copied text: snake_case
+    de_copy "Hello Palette World"
+    wait_for 10 db_has "Hello Palette World" || fail "copy 'Hello Palette World' not saved"
+    sleep 1
+    palette_query "snake_case" || fail "palette 'snake_case': no results logged"
+    if palette_has "result[0] [Action] snake_case | hello_palette_world | transform:snake"; then pass "palette 'snake_case' previews 'hello_palette_world' for the copied text"; else fail "palette 'snake_case' did not preview hello_palette_world"; palette_show; fi
+
+    # 3. emoji: "emoji rocket"
+    palette_query "emoji rocket" || fail "palette 'emoji rocket': no results logged"
+    if palette_has "result[0] [Calculator] Rocket | ↩ pastes into the front app | paste:🚀"; then pass "palette 'emoji rocket' shows the rocket emoji first"; else fail "palette 'emoji rocket' did not show the rocket first"; palette_show; fi
+    palette_shot emoji
+
+    # 4. no request goes out while typing a currency conversion (the rate is fetched only on Enter)
+    palette_query "100 usd to brl" || fail "palette '100 usd to brl': no results logged"
+    if palette_has "result[0] [Calculator] Convert \$100.00 to BRL | ↩ fetches today's rate (frankfurter.app) | fetch-rate:100 USD->BRL"; then pass "palette '100 usd to brl' offers the fetch and shows no rate yet"; else fail "currency item not as expected"; palette_show; fi
+    if log_since "$PQ_START" | grep -a -q 'Currency: fetching'; then fail "a currency request was made while typing"; else pass "no currency request was made while typing (no 'Currency: fetching' in the daemon log)"; fi
+
+    # 5. timer: the countdown is in the tray (StatusNotifierItem Title and ToolTip)
+    TRAY_DEST="$(tray_item_dest)"
+    palette_query "timer 1m test" || fail "palette 'timer 1m test': no results logged"
+    if palette_has "result[0] [Calculator] 1 min timer: test | "; then pass "palette 'timer 1m test' offers '1 min timer: test'"; else fail "timer item not as expected"; palette_show; fi
+    MENEW_TEST=1 "$MENEW_BIN" __palette-activate 0 >/dev/null 2>&1 || true
+    if [ -z "$TRAY_DEST" ]; then
+        fail "no tray item registered: cannot read the countdown"
+    elif wait_for 10 tray_title_has "TIMER"; then
+        info "tray Title -> $(tray_prop "$TRAY_DEST" Title)"
+        info "tray ToolTip -> $(tray_prop "$TRAY_DEST" ToolTip | cut -c1-200)"
+        pass "tray Title shows the countdown: $(tray_prop "$TRAY_DEST" Title | grep -a -o "Menew[^']*")"
+        if tray_prop "$TRAY_DEST" ToolTip | grep -a -q 'TIMER .*: test'; then pass "tray ToolTip lists the timer with its label"; else fail "tray ToolTip does not list the timer"; fi
+    else
+        fail "tray Title did not show the timer countdown: $(tray_prop "$TRAY_DEST" Title)"
+    fi
+
+    # 6. focus: "focus 1" adds the focus countdown to the same tray title
+    palette_query "focus 1" || fail "palette 'focus 1': no results logged"
+    if palette_has "result[0] [Action] Focus for 1 min | "; then pass "palette 'focus 1' offers 'Focus for 1 min'"; else fail "focus item not as expected"; palette_show; fi
+    MENEW_TEST=1 "$MENEW_BIN" __palette-activate 0 >/dev/null 2>&1 || true
+    if [ -n "$TRAY_DEST" ] && wait_for 10 tray_title_has "FOCUS"; then pass "tray Title shows the focus countdown: $(tray_prop "$TRAY_DEST" Title | grep -a -o "Menew[^']*")"; else fail "tray Title did not show FOCUS"; fi
+
+    # 7. a timer that ends: notification and sound (a 3 second timer)
+    local before; before="$(log_lines)"
+    palette_query "timer 3s done" || fail "palette 'timer 3s done': no results logged"
+    MENEW_TEST=1 "$MENEW_BIN" __palette-activate 0 >/dev/null 2>&1 || true
+    if wait_for 15 bash -c "tail -n +$((before + 1)) '$MENEW_LOG' | grep -a -q \"Notification sent: Timer done: done / Time's up.\""; then
+        pass "the 3 second timer ended: notification 'Timer done: done / Time's up.' sent"
+    else
+        fail "no end-of-timer notification in the daemon log"
+    fi
+    if log_since "$before" | grep -a -q 'Sound: '; then pass "sound played: $(log_since "$before" | grep -a -o 'Sound: .*' | head -1)"; else fail "no sound line in the daemon log"; fi
+}

@@ -1,216 +1,234 @@
-//! Simple, safe inline math evaluator for the Menew palette
+//! Math for the palette (port of `Calculator.swift`): "12*7,5", "20% de 340", "2(3+1)", "sqrt 16".
+//! Own evaluator: it never panics on invalid input.
 
-pub fn evaluate_expression(input: &str) -> Option<f64> {
-    let clean = input.trim();
-    if clean.is_empty() {
+use crate::conversions;
+use crate::format::format_number;
+use crate::i18n::Language;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CalcResult {
+    /// What is shown and copied.
+    pub value: String,
+    /// The calculation as understood.
+    pub detail: String,
+}
+
+/// `None` when the text is not a calculation (a lone number is not one either).
+pub fn evaluate(raw: &str, lang: Language) -> Option<CalcResult> {
+    let q = raw.trim().to_lowercase();
+    if q.is_empty() {
         return None;
     }
-
-    // Support "X% of Y" pattern
-    if let Some(res) = try_eval_percent_of(clean) {
-        return Some(res);
+    if let Some(r) = percent_of(&q, lang).or_else(|| conversions::convert(&q, lang)) {
+        return Some(r);
     }
-
-    // Check if contains valid math characters
-    let valid_chars = clean
-        .chars()
-        .all(|c| c.is_ascii_digit() || "+-*/%^.() ".contains(c));
-    if !valid_chars {
+    let has_op = q.chars().any(|c| "+-*/^x×÷%()√!".contains(c));
+    let has_fn = FUNCTIONS.iter().any(|(n, _)| q.contains(n)) || q.contains("pi") || q.contains('π');
+    if !has_op && !has_fn {
         return None;
     }
-
-    // Must contain at least one operator
-    let has_operator = clean.chars().any(|c| "+-*/^".contains(c));
-    if !has_operator {
+    let mut p = Parser::new(&q);
+    let v = p.parse()?;
+    if !v.is_finite() {
         return None;
     }
-
-    let tokens = tokenize(clean)?;
-    let mut parser = Parser::new(tokens);
-    parser.parse_expression()
+    Some(CalcResult { value: format_number(v, 10, lang), detail: raw.trim().to_string() })
 }
 
-fn try_eval_percent_of(input: &str) -> Option<f64> {
-    let parts: Vec<&str> = input.split_whitespace().collect();
-    if parts.len() == 3 && parts[1].eq_ignore_ascii_case("of") {
-        let percent_str = parts[0].trim_end_matches('%');
-        let percent: f64 = percent_str.parse().ok()?;
-        let total: f64 = parts[2].parse().ok()?;
-        return Some((percent / 100.0) * total);
+/// "20% de 340"
+fn percent_of(q: &str, lang: Language) -> Option<CalcResult> {
+    let parts: Vec<&str> = q.split(' ').filter(|s| !s.is_empty()).collect();
+    if parts.len() < 3 || !parts[0].ends_with('%') || !["de", "of", "von", "del", "的"].contains(&parts[1]) {
+        return None;
     }
-    None
+    let p = number(&parts[0][..parts[0].len() - 1])?;
+    let mut parser = Parser::new(&parts[2..].join(" "));
+    let base = parser.parse()?;
+    Some(CalcResult { value: format_number(p / 100.0 * base, 10, lang), detail: q.to_string() })
 }
 
-#[derive(Debug, PartialEq, Clone)]
-enum Token {
-    Number(f64),
-    Plus,
-    Minus,
-    Star,
-    Slash,
-    Caret,
-    LParen,
-    RParen,
-}
-
-fn tokenize(input: &str) -> Option<Vec<Token>> {
-    let mut tokens = Vec::new();
-    let mut chars = input.chars().peekable();
-
-    while let Some(&c) = chars.peek() {
-        match c {
-            ' ' | '\t' => {
-                chars.next();
-            }
-            '+' => {
-                tokens.push(Token::Plus);
-                chars.next();
-            }
-            '-' => {
-                tokens.push(Token::Minus);
-                chars.next();
-            }
-            '*' => {
-                tokens.push(Token::Star);
-                chars.next();
-            }
-            '/' => {
-                tokens.push(Token::Slash);
-                chars.next();
-            }
-            '^' => {
-                tokens.push(Token::Caret);
-                chars.next();
-            }
-            '(' => {
-                tokens.push(Token::LParen);
-                chars.next();
-            }
-            ')' => {
-                tokens.push(Token::RParen);
-                chars.next();
-            }
-            '0'..='9' | '.' => {
-                let mut num_str = String::new();
-                while let Some(&nc) = chars.peek() {
-                    if nc.is_ascii_digit() || nc == '.' {
-                        num_str.push(nc);
-                        chars.next();
-                    } else {
-                        break;
-                    }
-                }
-                let val: f64 = num_str.parse().ok()?;
-                tokens.push(Token::Number(val));
-            }
-            _ => return None,
-        }
+/// "1,5" and "1.5" are both 1.5.
+pub fn number(s: &str) -> Option<f64> {
+    let t = s.replace(',', ".");
+    if t.is_empty() || t.starts_with("inf") || t.starts_with("nan") || t.starts_with("+inf") || t.starts_with("-inf") {
+        return None;
     }
-
-    Some(tokens)
+    // Swift's Double() rejects what Rust's parse accepts only in exotic cases ("1e5" is fine in both)
+    t.parse::<f64>().ok()
 }
 
+type MathFn = fn(f64) -> f64;
+
+const FUNCTIONS: &[(&str, MathFn)] = &[
+    ("sqrt", f64::sqrt),
+    ("√", f64::sqrt),
+    ("raiz", f64::sqrt),
+    ("sin", f64::sin),
+    ("sen", f64::sin),
+    ("cos", f64::cos),
+    ("tan", f64::tan),
+    ("log", f64::log10),
+    ("ln", f64::ln),
+    ("abs", f64::abs),
+    ("round", f64::round),
+];
+
+fn function(name: &str) -> Option<MathFn> {
+    FUNCTIONS.iter().find(|(n, _)| *n == name).map(|(_, f)| *f)
+}
+
+/// expr = term (+|- term)*  ·  term = power (*|/ power)*  ·  power = unary (^ power)?
 struct Parser {
-    tokens: Vec<Token>,
-    pos: usize,
+    chars: Vec<char>,
+    i: usize,
 }
 
 impl Parser {
-    fn new(tokens: Vec<Token>) -> Self {
-        Self { tokens, pos: 0 }
+    fn new(s: &str) -> Self {
+        Self { chars: s.chars().filter(|c| *c != ' ').collect(), i: 0 }
     }
 
-    fn peek(&self) -> Option<&Token> {
-        self.tokens.get(self.pos)
-    }
-
-    fn next_token(&mut self) -> Option<Token> {
-        if self.pos < self.tokens.len() {
-            let t = self.tokens[self.pos].clone();
-            self.pos += 1;
-            Some(t)
+    fn parse(&mut self) -> Option<f64> {
+        let v = self.expr()?;
+        if self.i == self.chars.len() {
+            Some(v)
         } else {
             None
         }
     }
 
-    fn parse_expression(&mut self) -> Option<f64> {
-        let mut left = self.parse_term()?;
-
-        while let Some(tok) = self.peek() {
-            match tok {
-                Token::Plus => {
-                    self.next_token();
-                    let right = self.parse_term()?;
-                    left += right;
-                }
-                Token::Minus => {
-                    self.next_token();
-                    let right = self.parse_term()?;
-                    left -= right;
-                }
-                _ => break,
-            }
-        }
-
-        Some(left)
+    fn peek(&self) -> Option<char> {
+        self.chars.get(self.i).copied()
     }
 
-    fn parse_term(&mut self) -> Option<f64> {
-        let mut left = self.parse_factor()?;
-
-        while let Some(tok) = self.peek() {
-            match tok {
-                Token::Star => {
-                    self.next_token();
-                    let right = self.parse_factor()?;
-                    left *= right;
-                }
-                Token::Slash => {
-                    self.next_token();
-                    let right = self.parse_factor()?;
-                    if right == 0.0 {
-                        return None; // Division by zero
-                    }
-                    left /= right;
-                }
-                Token::Caret => {
-                    self.next_token();
-                    let right = self.parse_factor()?;
-                    left = left.powf(right);
-                }
-                _ => break,
+    fn expr(&mut self) -> Option<f64> {
+        let mut v = self.term()?;
+        while let Some(c) = self.peek() {
+            if c != '+' && c != '-' {
+                break;
             }
+            self.i += 1;
+            let start = self.i;
+            let r = self.term()?;
+            // "200 + 10%" = 220, like calculators do
+            let is_percent = self.i > start && self.chars[self.i - 1] == '%';
+            let amount = if is_percent { v * r } else { r };
+            v = if c == '+' { v + amount } else { v - amount };
         }
-
-        Some(left)
+        Some(v)
     }
 
-    fn parse_factor(&mut self) -> Option<f64> {
-        match self.next_token()? {
-            Token::Number(n) => Some(n),
-            Token::Minus => {
-                let val = self.parse_factor()?;
-                Some(-val)
+    fn term(&mut self) -> Option<f64> {
+        let mut v = self.power()?;
+        while let Some(c) = self.peek() {
+            if c == '*' || c == '×' || c == 'x' {
+                self.i += 1;
+                v *= self.power()?;
+            } else if c == '/' || c == '÷' {
+                self.i += 1;
+                v /= self.power()?;
+            } else if c == '(' || c.is_alphabetic() || c == '√' {
+                // "2(3+1)", "2pi"
+                v *= self.power()?;
+            } else {
+                break;
             }
-            Token::Plus => self.parse_factor(),
-            Token::LParen => {
-                let val = self.parse_expression()?;
-                if self.next_token()? != Token::RParen {
+        }
+        Some(v)
+    }
+
+    fn power(&mut self) -> Option<f64> {
+        let base = self.unary()?;
+        if self.peek() == Some('^') {
+            self.i += 1;
+            let exp = self.power()?;
+            return Some(base.powf(exp));
+        }
+        Some(base)
+    }
+
+    fn unary(&mut self) -> Option<f64> {
+        match self.peek() {
+            Some('-') => {
+                self.i += 1;
+                self.unary().map(|v| -v)
+            }
+            Some('+') => {
+                self.i += 1;
+                self.unary()
+            }
+            _ => self.postfix(),
+        }
+    }
+
+    fn postfix(&mut self) -> Option<f64> {
+        let mut v = self.primary()?;
+        while let Some(c) = self.peek() {
+            if c == '%' {
+                self.i += 1;
+                v /= 100.0;
+            } else if c == '!' {
+                self.i += 1;
+                if !(0.0..=170.0).contains(&v) || v != v.round() {
                     return None;
                 }
-                Some(val)
+                let n = (v as u64).max(1);
+                v = (1..=n).fold(1.0, |a, k| a * k as f64);
+            } else {
+                break;
             }
-            _ => None,
         }
+        Some(v)
     }
-}
 
-pub fn format_result(val: f64) -> String {
-    if val.fract() == 0.0 && val.abs() < 1e15 {
-        format!("{:.0}", val)
-    } else {
-        format!("{:.4}", val).trim_end_matches('0').trim_end_matches('.').to_string()
+    fn primary(&mut self) -> Option<f64> {
+        let c = self.peek()?;
+        if c == '(' {
+            self.i += 1;
+            let v = self.expr()?;
+            if self.peek() != Some(')') {
+                return None;
+            }
+            self.i += 1;
+            return Some(v);
+        }
+        if c.is_numeric() || c == '.' || c == ',' {
+            let start = self.i;
+            while let Some(d) = self.peek() {
+                if d.is_numeric() || d == '.' || d == ',' {
+                    self.i += 1;
+                } else {
+                    break;
+                }
+            }
+            let s: String = self.chars[start..self.i].iter().collect();
+            return number(&s);
+        }
+        if c == '√' {
+            self.i += 1;
+            return self.primary().map(f64::sqrt);
+        }
+        if c.is_alphabetic() || c == 'π' {
+            let start = self.i;
+            while let Some(d) = self.peek() {
+                if d.is_alphabetic() || d == 'π' {
+                    self.i += 1;
+                } else {
+                    break;
+                }
+            }
+            let name: String = self.chars[start..self.i].iter().collect();
+            if name == "pi" || name == "π" {
+                return Some(std::f64::consts::PI);
+            }
+            if name == "e" {
+                return Some(std::f64::consts::E);
+            }
+            let f = function(&name)?;
+            let arg = self.primary()?;
+            return Some(f(arg));
+        }
+        None
     }
 }
 
@@ -218,18 +236,31 @@ pub fn format_result(val: f64) -> String {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_eval_expressions() {
-        assert_eq!(evaluate_expression("12 * 7.5"), Some(90.0));
-        assert_eq!(evaluate_expression("100 / 4 + 15"), Some(40.0));
-        assert_eq!(evaluate_expression("2 ^ 8"), Some(256.0));
-        assert_eq!(evaluate_expression("(2 + 3) * 4"), Some(20.0));
-        assert_eq!(evaluate_expression("20% of 340"), Some(68.0));
+    fn ev(q: &str) -> Option<String> {
+        evaluate(q, Language::En).map(|r| r.value)
     }
 
     #[test]
-    fn test_format() {
-        assert_eq!(format_result(90.0), "90");
-        assert_eq!(format_result(1.23456), "1.2346");
+    fn plain_expressions() {
+        assert_eq!(ev("12*7.5").as_deref(), Some("90"));
+        assert_eq!(ev("100 / 4 + 15").as_deref(), Some("40"));
+        assert_eq!(ev("2 ^ 8").as_deref(), Some("256"));
+        assert_eq!(ev("(2 + 3) * 4").as_deref(), Some("20"));
+    }
+
+    #[test]
+    fn a_lone_number_or_word_is_not_a_calculation() {
+        assert_eq!(ev("42"), None);
+        assert_eq!(ev("firefox"), None);
+        assert_eq!(ev(""), None);
+    }
+
+    #[test]
+    fn invalid_input_never_panics() {
+        assert_eq!(ev("1/0"), None);
+        assert_eq!(ev("(1+"), None);
+        assert_eq!(ev("2*"), None);
+        assert_eq!(ev("171!"), None);
+        assert_eq!(ev("sqrt"), None);
     }
 }
