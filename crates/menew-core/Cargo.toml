@@ -3,7 +3,7 @@ name = "menew-core"
 version = "0.1.0"
 edition = "2021"
 description = "Core logic, desktop app scanning, database and i18n for Menew Linux"
-license = "MIT"
+license = "GPL-3.0-only"
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }

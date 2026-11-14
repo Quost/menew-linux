@@ -1,6 +1,8 @@
 # Menew for Linux: Project Rules for Agents
 
-Native Linux productivity utility built in Rust (GTK4 + Libadwaita). Separate repository from the macOS version (`../menew`). MIT licensed.
+Native Linux productivity utility built in Rust (GTK4 + Libadwaita). Separate repository from the macOS version (`../menew`). Licensed under **GPL-3.0-only**, the same as the Mac app. The name "Menew", the icon and the website are not covered by the license: see `TRADEMARK.md`.
+
+**Parity with the Mac app is the goal.** Before planning or reviewing any feature, check `../menew` itself (README, `LICENSE`, `TRADEMARK.md`, `Sources/`), not only this repo, and keep `docs/parity.md` up to date.
 
 ## Core Principles (Strict - Never Violate)
 

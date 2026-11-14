@@ -3,7 +3,7 @@ name = "menew-clipboard"
 version = "0.1.0"
 edition = "2021"
 description = "Clipboard listener (KDE data-control + GNOME D-Bus bridge) with SQLite history"
-license = "MIT"
+license = "GPL-3.0-only"
 
 [dependencies]
 menew-core = { path = "../menew-core" }

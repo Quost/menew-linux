@@ -3,7 +3,7 @@ name = "menew-tray"
 version = "0.1.0"
 edition = "2021"
 description = "System tray service via StatusNotifierItem (ksni) for Menew Linux"
-license = "MIT"
+license = "GPL-3.0-only"
 
 [dependencies]
 menew-core = { path = "../menew-core" }

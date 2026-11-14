@@ -111,4 +111,6 @@ Screenshots with fake data are in `docs/desktop-tests/` (`*-palette.png`, `*-cli
 
 ## License
 
-MIT (c) 2026 Matheus Quost
+[GPL-3.0](LICENSE) © Matheus Quost.
+
+The name “Menew”, the icon and the website are not part of the license: a fork needs its own name and icon. See [TRADEMARK.md](TRADEMARK.md).
