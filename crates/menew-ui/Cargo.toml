@@ -1,6 +1,6 @@
 [package]
 name = "menew-ui"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "GTK4 / Libadwaita user interface and command palette for Menew Linux"
 license = "GPL-3.0-only"

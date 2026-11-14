@@ -2,7 +2,9 @@
 
 Private, native productivity utility for Linux desktops (GNOME and KDE Plasma on Wayland).
 
-Linux counterpart of [Menew for macOS](https://menew.web.app).
+Linux port of [Menew for macOS](https://github.com/Quost/menew), in progress.
+
+> **Status: not released yet.** Only a small part of the Mac app exists here so far (palette with apps and math, text clipboard history, tray). The first release will come when the core of the Mac app is ported: see [docs/parity.md](docs/parity.md) for every feature and its Linux status.
 
 ## Features
 
@@ -41,6 +43,62 @@ The project is structured as a modular Cargo workspace:
 - `menew-shortcuts`: Global shortcut listener using `org.freedesktop.portal.GlobalShortcuts` (`ashpd`).
 - `menew-clipboard`: Clipboard history manager supporting KDE Wayland data-control and GNOME D-Bus extension bridge.
 - `gnome-extension`: Lightweight GNOME Shell extension bridging Wayland clipboard events to the Menew daemon.
+
+## Install
+
+There is no release yet. Once there is, the files will be on the GitHub release page; check them with `SHA256SUMS`. Until then, build from source (see [CONTRIBUTING.md](CONTRIBUTING.md)) or build the packages yourself (`cargo deb -p menew`, `scripts/build-appimage.sh`).
+
+```bash
+sha256sum -c SHA256SUMS
+```
+
+### .deb (Ubuntu 24.04+, Debian 13)
+
+```bash
+sudo apt install ./menew_<version>_amd64.deb
+menew --version   # prints the version
+menew             # starts hidden in the tray; open the palette with Ctrl+Alt+Space
+```
+
+`wl-clipboard` is recommended (used for clipboard history on KDE).
+
+### AppImage (any x86_64 distro)
+
+```bash
+chmod +x Menew-<version>-x86_64.AppImage
+./Menew-<version>-x86_64.AppImage
+```
+
+GTK4 and libadwaita are bundled. If you enable "Start at login" in the tray, the autostart entry points at the AppImage file, so keep it where it is. The AppImage does not install the GNOME extension (see below).
+
+### GNOME: clipboard extension and tray icon
+
+On GNOME Wayland the clipboard history needs the Menew GNOME Shell extension, and the tray icon needs the AppIndicator extension.
+
+- With the .deb the extension is installed in `/usr/share/gnome-shell/extensions/menew-bridge@menew.web.app/` but **not enabled**:
+
+  ```bash
+  gnome-extensions enable menew-bridge@menew.web.app
+  ```
+
+  Then log out and in again (Wayland cannot reload GNOME Shell).
+- With the AppImage, install it from a checkout of this repository: `bash gnome-extension/install.sh`, then enable it as above.
+- Tray icon: install the AppIndicator extension and enable it with `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com`. On Ubuntu/Debian: `sudo apt install gnome-shell-extension-appindicator`. On Fedora: `sudo dnf install gnome-shell-extension-appindicator`.
+- GNOME 45-47 has no GlobalShortcuts portal: create two custom shortcuts that run `menew toggle` and `menew clipboard`.
+
+On KDE Plasma nothing extra is needed.
+
+### Optional: paste with uinput
+
+By default Menew copies the entry and shows "Copied. Press Ctrl+V to paste". To let it press Ctrl+V for you it needs write access to `/dev/uinput`. The packages **do not** install this. The rule is in `data/60-menew-uinput.rules`:
+
+```bash
+sudo cp data/60-menew-uinput.rules /etc/udev/rules.d/
+sudo udevadm control --reload && sudo udevadm trigger /dev/uinput
+sudo usermod -aG input "$USER"    # then log out and in
+```
+
+Security risk: any program running as a member of the `input` group can then inject keystrokes into your session. Only enable it if you accept that. To undo it, remove the rule file and the group membership (`sudo gpasswd -d "$USER" input`).
 
 ## Building and Testing
 

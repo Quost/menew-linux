@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>app.menew.Menew</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-only</project_license>
+  <name>Menew</name>
+  <summary>Command palette and clipboard history</summary>
+  <summary xml:lang="pt">Paleta de comandos e historico da area de transferencia</summary>
+  <summary xml:lang="de">Befehlspalette und Zwischenablage-Verlauf</summary>
+  <summary xml:lang="es">Paleta de comandos e historial del portapapeles</summary>
+  <summary xml:lang="zh">命令面板和剪贴板历史</summary>
+  <description>
+    <p>Menew is a private, native productivity utility for GNOME and KDE Plasma on Wayland. Open the palette with a shortcut to launch apps, evaluate math inline and browse your clipboard history.</p>
+    <p>Everything stays on your machine: no telemetry, no analytics and no network requests.</p>
+  </description>
+  <launchable type="desktop-id">app.menew.Menew.desktop</launchable>
+  <icon type="stock">menew</icon>
+  <url type="homepage">https://menew.web.app</url>
+  <developer id="app.menew">
+    <name>Matheus Quost</name>
+  </developer>
+  <categories>
+    <category>Utility</category>
+  </categories>
+  <content_rating type="oars-1.1"/>
+  <provides>
+    <binary>menew</binary>
+  </provides>
+  <releases>
+    <release version="0.1.0-alpha.1" date="2026-11-14"/>
+  </releases>
+</component>

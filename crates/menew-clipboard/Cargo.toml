@@ -1,6 +1,6 @@
 [package]
 name = "menew-clipboard"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Clipboard listener (KDE data-control + GNOME D-Bus bridge) with SQLite history"
 license = "GPL-3.0-only"

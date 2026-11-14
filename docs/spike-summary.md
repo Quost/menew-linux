@@ -2,7 +2,7 @@
 
 ## Overview
 
-The spike phase for **Menew for Linux** is complete. We built a modular Rust Cargo workspace targeting GNOME and KDE Plasma on Wayland, validating all critical architectural risks identified in `HANDOFF.md`.
+The spike phase for **Menew for Linux** is complete. We built a modular Rust Cargo workspace targeting GNOME and KDE Plasma on Wayland, validating all critical architectural risks identified in `docs/history/spike-handoff.md`.
 
 ---
 

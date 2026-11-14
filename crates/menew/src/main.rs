@@ -73,7 +73,17 @@ fn test_action(args: &[String]) -> Option<Action> {
     args.get(pos + 1)?.parse().ok().map(make)
 }
 
+/// Text printed by `menew --version`.
+fn version_line() -> String {
+    format!("menew {}", env!("CARGO_PKG_VERSION"))
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if std::env::args().skip(1).any(|a| a == "--version" || a == "-V") {
+        println!("{}", version_line());
+        return Ok(());
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
@@ -369,6 +379,11 @@ mod tests {
 
     fn v(a: &[&str]) -> Vec<String> {
         a.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn version_line_has_the_alpha_version() {
+        assert_eq!(version_line(), "menew 0.1.0-alpha.1");
     }
 
     #[test]

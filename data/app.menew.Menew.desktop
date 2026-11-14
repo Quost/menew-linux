@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Name=Menew
+Comment=Command palette and clipboard history
+Comment[pt]=Paleta de comandos e historico da area de transferencia
+Comment[de]=Befehlspalette und Zwischenablage-Verlauf
+Comment[es]=Paleta de comandos e historial del portapapeles
+Comment[zh]=命令面板和剪贴板历史
+Exec=menew
+Icon=menew
+Terminal=false
+Categories=Utility;
+Keywords=launcher;clipboard;palette;calculator;
+StartupNotify=false

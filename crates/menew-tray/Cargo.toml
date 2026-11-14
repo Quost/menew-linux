@@ -1,6 +1,6 @@
 [package]
 name = "menew-tray"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "System tray service via StatusNotifierItem (ksni) for Menew Linux"
 license = "GPL-3.0-only"

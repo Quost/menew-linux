@@ -5,17 +5,52 @@ use std::path::{Path, PathBuf};
 
 pub const AUTOSTART_FILE: &str = "menew.desktop";
 
-/// Content of the autostart entry. `Exec=menew` starts the daemon hidden (tray only).
+/// Quote a path for the `Exec` key of a desktop entry when it has spaces or special characters.
+fn exec_quote(path: &str) -> String {
+    let needs_quotes = path.chars().any(|c| {
+        matches!(
+            c,
+            ' ' | '\t' | '\n' | '"' | '\'' | '\\' | '>' | '<' | '~' | '|' | '&' | ';' | '$' | '*' | '?' | '#' | '(' | ')' | '`'
+        )
+    });
+    if !needs_quotes {
+        return path.replace('%', "%%");
+    }
+    let mut out = String::from("\"");
+    for c in path.chars() {
+        if matches!(c, '"' | '`' | '$' | '\\') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('"');
+    // `%` starts a field code in Exec and must be doubled.
+    out.replace('%', "%%")
+}
+
+/// Content of the autostart entry for a given `$APPIMAGE` value.
+/// With an AppImage the entry must launch the AppImage file itself, since `menew` is not on PATH.
+pub fn desktop_file_content_for(appimage: Option<&str>) -> String {
+    let exec = match appimage.map(str::trim).filter(|p| !p.is_empty()) {
+        Some(path) => exec_quote(path),
+        None => "menew".to_string(),
+    };
+    format!(
+        "[Desktop Entry]\n\
+         Type=Application\n\
+         Name=Menew\n\
+         Comment=Command palette and clipboard history\n\
+         Exec={exec}\n\
+         Terminal=false\n\
+         NoDisplay=true\n\
+         X-GNOME-Autostart-enabled=true\n"
+    )
+}
+
+/// Content of the autostart entry. `Exec=menew` starts the daemon hidden (tray only);
+/// when running from an AppImage (`$APPIMAGE` set) it uses the AppImage path instead.
 pub fn desktop_file_content() -> String {
-    "[Desktop Entry]\n\
-     Type=Application\n\
-     Name=Menew\n\
-     Comment=Command palette and clipboard history\n\
-     Exec=menew\n\
-     Terminal=false\n\
-     NoDisplay=true\n\
-     X-GNOME-Autostart-enabled=true\n"
-        .to_string()
+    desktop_file_content_for(std::env::var("APPIMAGE").ok().as_deref())
 }
 
 pub fn autostart_path_in(config_dir: &Path) -> PathBuf {
@@ -61,11 +96,36 @@ mod tests {
 
     #[test]
     fn content_is_a_valid_hidden_start_entry() {
-        let c = desktop_file_content();
+        let c = desktop_file_content_for(None);
         assert!(c.starts_with("[Desktop Entry]\n"));
         assert!(c.lines().any(|l| l == "Exec=menew"));
         assert!(c.lines().any(|l| l == "Type=Application"));
         assert!(!c.contains('\u{2014}'));
+    }
+
+    #[test]
+    fn plain_install_uses_menew_command() {
+        let c = desktop_file_content_for(None);
+        assert!(c.lines().any(|l| l == "Exec=menew"));
+        // an empty $APPIMAGE counts as not set
+        assert_eq!(desktop_file_content_for(Some("")), c);
+    }
+
+    #[test]
+    fn appimage_uses_the_appimage_path() {
+        let c = desktop_file_content_for(Some("/home/u/Apps/Menew-0.1.0-alpha.1-x86_64.AppImage"));
+        assert!(c
+            .lines()
+            .any(|l| l == "Exec=/home/u/Apps/Menew-0.1.0-alpha.1-x86_64.AppImage"));
+        assert!(!c.lines().any(|l| l == "Exec=menew"));
+    }
+
+    #[test]
+    fn appimage_path_with_spaces_is_quoted() {
+        let c = desktop_file_content_for(Some("/home/u/My Apps/Menew.AppImage"));
+        assert!(c
+            .lines()
+            .any(|l| l == "Exec=\"/home/u/My Apps/Menew.AppImage\""));
     }
 
     #[test]

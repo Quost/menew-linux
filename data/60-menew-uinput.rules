@@ -1,0 +1,6 @@
+# OPTIONAL and NOT installed by the Menew package.
+# Lets members of the "input" group write to /dev/uinput, which Menew uses to press Ctrl+V
+# after you pick a clipboard entry. Security note: anyone in the "input" group can then
+# inject keystrokes into your session. Without this file Menew only copies and shows a notification.
+# See the README ("Optional: paste with uinput") before copying it to /etc/udev/rules.d/.
+KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"
