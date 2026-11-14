@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use rusqlite::{params, Connection, Result};
+use rusqlite::{params, Connection, OptionalExtension, Result};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -11,6 +11,18 @@ pub struct ClipboardEntry {
     pub char_count: usize,
     pub is_pinned: bool,
     pub created_at: i64,
+}
+
+/// Escape `\`, `%` and `_` so a user query is matched literally by `LIKE ? ESCAPE '\\'`.
+fn escape_like(query: &str) -> String {
+    let mut out = String::with_capacity(query.len());
+    for c in query.chars() {
+        if matches!(c, '\\' | '%' | '_') {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out
 }
 
 #[derive(Clone)]
@@ -71,6 +83,9 @@ impl ClipboardDatabase {
 
             CREATE INDEX IF NOT EXISTS idx_clipboard_created 
             ON clipboard_entries(created_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_clipboard_text
+            ON clipboard_entries(text_content);
             "#,
         )?;
         Ok(())
@@ -86,23 +101,21 @@ impl ClipboardDatabase {
         let now = chrono::Utc::now().timestamp_millis();
         let conn = self.conn.lock().unwrap();
 
-        // Check latest entry to prevent duplicate spam
-        let mut stmt = conn.prepare(
-            "SELECT id, text_content FROM clipboard_entries ORDER BY id DESC LIMIT 1",
-        )?;
-        let mut rows = stmt.query([])?;
-
-        if let Some(row) = rows.next()? {
-            let last_id: i64 = row.get(0)?;
-            let last_text: String = row.get(1)?;
-            if last_text == text {
-                // Just update the timestamp
-                conn.execute(
-                    "UPDATE clipboard_entries SET created_at = ? WHERE id = ?",
-                    params![now, last_id],
-                )?;
-                return Ok(Some(last_id));
-            }
+        // Global dedupe by identical content: bump the existing row (keeping is_pinned)
+        // instead of inserting a twin. Uses idx_clipboard_text, so no table scan.
+        let existing: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM clipboard_entries WHERE text_content = ? ORDER BY id DESC LIMIT 1",
+                params![text],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(id) = existing {
+            conn.execute(
+                "UPDATE clipboard_entries SET created_at = ? WHERE id = ?",
+                params![now, id],
+            )?;
+            return Ok(Some(id));
         }
 
         let char_count = text.chars().count();
@@ -144,12 +157,12 @@ impl ClipboardDatabase {
     }
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Vec<ClipboardEntry>> {
-        let pattern = format!("%{}%", query);
+        let pattern = format!("%{}%", escape_like(query));
         let conn = self.conn.lock().unwrap();
         let mut stmt = conn.prepare(
             "SELECT id, content_type, text_content, char_count, is_pinned, created_at
              FROM clipboard_entries
-             WHERE text_content LIKE ?
+             WHERE text_content LIKE ? ESCAPE '\\'
              ORDER BY is_pinned DESC, created_at DESC, id DESC
              LIMIT ?",
         )?;
@@ -240,5 +253,68 @@ mod tests {
         let remaining = db.get_recent(10).expect("get_recent failed");
         assert_eq!(remaining.len(), 1);
         assert_eq!(remaining[0].text_content, "Hello World");
+    }
+
+    #[test]
+    fn saving_a_b_a_leaves_two_rows_with_a_most_recent() {
+        let db = ClipboardDatabase::open_in_memory().unwrap();
+        let a = db.save_text("A").unwrap().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let b = db.save_text("B").unwrap().unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        let a2 = db.save_text("A").unwrap().unwrap();
+        assert_eq!(a, a2, "same row is reused");
+        assert_ne!(a, b);
+        let rows = db.get_recent(10).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].text_content, "A");
+        assert_eq!(rows[1].text_content, "B");
+    }
+
+    #[test]
+    fn recopying_a_pinned_entry_keeps_one_pinned_row() {
+        let db = ClipboardDatabase::open_in_memory().unwrap();
+        let a = db.save_text("keep me").unwrap().unwrap();
+        db.toggle_pinned(a).unwrap();
+        db.save_text("other").unwrap();
+        let again = db.save_text("keep me").unwrap().unwrap();
+        assert_eq!(a, again);
+        let rows = db.get_recent(10).unwrap();
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].text_content, "keep me");
+        assert!(rows[0].is_pinned);
+        assert!(!rows[1].is_pinned);
+    }
+
+    #[test]
+    fn text_lookup_uses_the_index() {
+        let db = ClipboardDatabase::open_in_memory().unwrap();
+        let conn = db.conn.lock().unwrap();
+        let plan: String = conn
+            .query_row(
+                "EXPLAIN QUERY PLAN SELECT id FROM clipboard_entries WHERE text_content = 'x'",
+                [],
+                |r| r.get(3),
+            )
+            .unwrap();
+        assert!(plan.contains("idx_clipboard_text"), "{plan}");
+    }
+
+    #[test]
+    fn search_treats_percent_and_underscore_literally() {
+        let db = ClipboardDatabase::open_in_memory().unwrap();
+        for t in ["500", "50% off", "axb", "a_b", "back\\slash"] {
+            db.save_text(t).unwrap();
+        }
+        let texts = |q: &str| -> Vec<String> {
+            db.search(q, 10).unwrap().into_iter().map(|e| e.text_content).collect()
+        };
+        assert_eq!(texts("50%"), vec!["50% off".to_string()]);
+        assert!(!texts("50%").contains(&"500".to_string()));
+        assert_eq!(texts("a_b"), vec!["a_b".to_string()]);
+        assert!(!texts("a_b").contains(&"axb".to_string()));
+        assert_eq!(texts("\\"), vec!["back\\slash".to_string()]);
+        // plain substring search still works
+        assert_eq!(texts("off"), vec!["50% off".to_string()]);
     }
 }

@@ -4,6 +4,7 @@ use tracing::{info, warn};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShortcutEvent {
     TogglePalette,
+    ToggleClipboard,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,11 +55,14 @@ mod linux_impl {
         // Ctrl+Alt+Space as default (avoids GNOME's Super+Space input switch)
         let shortcut = NewShortcut::new("toggle_palette", "Open Menew Command Palette")
             .preferred_trigger(Some("Control+Alt+Space"));
+        let clipboard_shortcut =
+            NewShortcut::new("toggle_clipboard", menew_core::t("shortcut_clipboard_desc"))
+                .preferred_trigger(Some("Control+Alt+V"));
 
         let response = match global_shortcuts
             .bind_shortcuts(
                 &session,
-                &[shortcut],
+                &[shortcut, clipboard_shortcut],
                 Default::default(),
             )
             .await
@@ -92,8 +96,14 @@ mod linux_impl {
             while let Some(event) = activated_stream.next().await {
                 let shortcut_id = event.shortcut_id();
                 info!("Portal shortcut triggered: {}", shortcut_id);
-                if shortcut_id == "toggle_palette" {
-                    let _ = tx.send(ShortcutEvent::TogglePalette);
+                match shortcut_id {
+                    "toggle_palette" => {
+                        let _ = tx.send(ShortcutEvent::TogglePalette);
+                    }
+                    "toggle_clipboard" => {
+                        let _ = tx.send(ShortcutEvent::ToggleClipboard);
+                    }
+                    _ => {}
                 }
             }
         });
@@ -119,6 +129,10 @@ mod linux_impl {
         eprintln!("     Name:     Menew Palette");
         eprintln!("     Command:  menew toggle");
         eprintln!("     Shortcut: Ctrl+Alt+Space");
+        eprintln!("   And for the clipboard history, a second custom shortcut:");
+        eprintln!("     Name:     Menew Clipboard");
+        eprintln!("     Command:  menew clipboard");
+        eprintln!("     Shortcut: Ctrl+Alt+V");
         eprintln!("====================================================================");
         eprintln!();
     }
@@ -150,6 +164,8 @@ mod tests {
     async fn test_shortcuts_channel() {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         tx.send(ShortcutEvent::TogglePalette).unwrap();
+        tx.send(ShortcutEvent::ToggleClipboard).unwrap();
         assert_eq!(rx.recv().await, Some(ShortcutEvent::TogglePalette));
+        assert_eq!(rx.recv().await, Some(ShortcutEvent::ToggleClipboard));
     }
 }

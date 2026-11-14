@@ -12,8 +12,19 @@ bash scripts/desktop-test/gnome.sh            # headless GNOME Shell + the bridg
 bash scripts/desktop-test/kde.sh              # headless KWin + wl-paste watcher
 ```
 
-Screenshots land in `docs/desktop-tests/gnome-palette.png` and `kde-palette.png`.
-The daemon is pointed at a temporary database with the test hook `MENEW_DB_PATH`.
+Screenshots land in `docs/desktop-tests/`: `gnome-palette.png`, `kde-palette.png` (Apps mode) and
+`gnome-clipboard.png`, `kde-clipboard.png` (clipboard mode, fake data only).
+The daemon is pointed at a temporary database with the test hook `MENEW_DB_PATH`, and is started
+with `MENEW_TEST=1`, which enables the hidden commands `__select-clipboard`, `__pin-clipboard` and
+`__delete-clipboard <index>` (0-based). The scripts exit with the real status of the run
+(`dbus-run-session` itself does not pass it on, so it goes through a file).
+
+To read the exit status from Windows use `wsl.exe --exec`; a plain `wsl.exe -- bash -lc "...; echo $?"`
+expands `$?` in the wrapper shell and always prints 0:
+
+```bash
+wsl.exe -d Ubuntu-24.04 --exec bash -lc 'cd /path/to/menew-linux && bash scripts/desktop-test/kde.sh; echo exit=$?'
+```
 
 ## Packages (Ubuntu 24.04, GNOME Shell 46, KWin 5.27)
 
@@ -32,6 +43,10 @@ typelibs, which come with the GTK dev packages).
 | KDE copy -> SQLite | real `wl-copy` -> `wl-paste --watch` -> helper -> daemon | none |
 | KDE password hint | real helper MIME check + daemon | a stub `wl-paste` reports the MIME list, since no two-type selection can be created headless |
 | KDE tray | real ksni registration | `watcher.py`, a ~50 line StatusNotifierWatcher stand-in (no plasmashell installed) |
+| Phase 2: select an entry | real GTK palette sets the real clipboard, read back with `wl-paste` (KDE) or in-shell `St.Clipboard.get_text` (GNOME) | the palette is kept open while selecting, and Enter is replaced by the `__select-clipboard` hook (no keyboard headless) |
+| Phase 2: pin / delete | the same functions Ctrl+P / Ctrl+Delete call | `__pin-clipboard` / `__delete-clipboard` hooks |
+| Phase 2: tray menu | real ksni dbusmenu, clicked with `com.canonical.dbusmenu.Event` | `watcher.py` stand-in (also on GNOME) |
+| Phase 2: paste | notification fallback observed with `dbus-monitor`; real uinput only if `/dev/uinput` is writable | `notifyd.py` stand-in on KDE (KWin has no notification server) |
 | KDE screenshot | `spectacle` via KWin ScreenShot2 | `grim` does not work: KWin 5.27 has no wlr-screencopy |
 | GNOME screenshot | `org.gnome.Shell.Screenshot` | none |
 

@@ -44,3 +44,167 @@ kill_tracked() {
 
 db_count() { sqlite3 "$MENEW_DB_PATH" "SELECT COUNT(*) FROM clipboard_entries WHERE text_content = '$1';" 2>/dev/null; }
 db_has() { [ "$(db_count "$1")" -ge 1 ] 2>/dev/null; }
+
+# ---- Phase 2 helpers ----
+
+# distinct_colors <png> : number of distinct colours (ImageMagick), 0 if it cannot be read
+distinct_colors() { identify -format %k "$1" 2>/dev/null || echo 0; }
+
+# clipboard_text : current clipboard text through wl-paste (data-control, no focus needed)
+clipboard_text() { timeout 5 wl-paste --no-newline 2>/dev/null; }
+clipboard_is() { [ "$(clipboard_text)" = "$1" ]; }
+
+# db_pinned <text> : is_pinned flag of the entry with exactly that text
+db_pinned() { sqlite3 "$MENEW_DB_PATH" "SELECT is_pinned FROM clipboard_entries WHERE text_content = '$1' ORDER BY id DESC LIMIT 1;" 2>/dev/null; }
+
+# db_order : display order of the history (pinned first, then newest), one entry per line
+db_order() { sqlite3 "$MENEW_DB_PATH" "SELECT replace(text_content, char(10), ' ') FROM clipboard_entries ORDER BY is_pinned DESC, created_at DESC, id DESC;" 2>/dev/null; }
+
+# tray_item_dest : bus name of the first registered StatusNotifierItem (ksni owns org.kde.StatusNotifierItem-<pid>-<n>)
+tray_item_dest() {
+    local out
+    out="$(gdbus call --session --dest org.kde.StatusNotifierWatcher --object-path /StatusNotifierWatcher \
+        --method org.freedesktop.DBus.Properties.Get org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems 2>/dev/null)" || return 0
+    echo "$out" | grep -o 'org\.kde\.StatusNotifierItem-[0-9]*-[0-9]*' | head -1 || true
+}
+
+# tray_menu_find <dest> <label> : prints "<dbusmenu id> <toggle-state or ->" for the item with that label
+tray_menu_find() {
+    gdbus call --session --dest "$1" --object-path /MenuBar \
+        --method com.canonical.dbusmenu.GetLayout 0 10 '[]' 2>/dev/null \
+        | python3 -c '
+import re, sys
+label = sys.argv[1]
+text = sys.stdin.read()
+for m in re.finditer(r"\((\d+), \{([^{}]*)\}", text):
+    props = m.group(2)
+    if "\x27label\x27: <\x27" + label + "\x27>" in props:
+        ts = re.search(r"\x27toggle-state\x27: <(?:int32 )?(\d+)>", props)
+        print(m.group(1), ts.group(1) if ts else "-")
+        break
+else:
+    sys.exit(1)
+' "$2"
+}
+
+# tray_menu_click <dest> <id> : activate a dbusmenu item like a click on the tray menu
+tray_menu_click() {
+    gdbus call --session --dest "$1" --object-path /MenuBar \
+        --method com.canonical.dbusmenu.Event "$2" clicked "<int32 0>" 0
+}
+
+# phase2_checks : clipboard mode screenshot, selecting an entry, pin/delete hooks, tray actions.
+# The calling script defines: DE (kde|gnome), FIRST_TEXT (an entry already in the history),
+# de_copy <text>, de_clipboard_is <text>, de_screenshot <png>.
+phase2_checks() {
+    local shot="$REPO_ROOT/docs/desktop-tests/$DE-clipboard.png"
+    local t
+
+    # fake data only: temporary database, invented strings
+    local fake_url='https://example.com/docs/getting-started'
+    local fake_ssh='ssh deploy@staging.example.com'
+    local target="$DE-select-target"
+    for t in "$fake_url" "$fake_ssh" "$target" "$DE-newest"; do
+        de_copy "$t"
+        wait_for 10 db_has "$t" || fail "fake entry '$t' not saved"
+        sleep 1
+    done
+    # varied ages and one pinned entry for the screenshot
+    sqlite3 "$MENEW_DB_PATH" "UPDATE clipboard_entries SET created_at = created_at - 300000 WHERE text_content = '$fake_url';
+        UPDATE clipboard_entries SET created_at = created_at - 7200000 WHERE text_content = '$fake_ssh';
+        UPDATE clipboard_entries SET is_pinned = 1 WHERE text_content = '$FIRST_TEXT';"
+    info "history rows: $(sqlite3 "$MENEW_DB_PATH" "SELECT count(*) FROM clipboard_entries;")"
+
+    # (a) palette in clipboard mode
+    "$MENEW_BIN" toggle >/dev/null 2>&1 || true     # the Apps palette is still open from the screenshot check
+    sleep 1
+    rm -f "$shot"
+    "$MENEW_BIN" clipboard >/dev/null 2>&1 || true
+    sleep 3
+    if grep -a -q 'presented and focused (Clipboard)' "$MENEW_LOG"; then pass "menew clipboard opened the palette in clipboard mode (daemon log)"; else fail "no 'presented and focused (Clipboard)' in the daemon log"; fi
+    de_screenshot "$shot"
+    if [ -s "$shot" ]; then
+        local colors; colors="$(distinct_colors "$shot")"
+        if [ "${colors:-0}" -gt 20 ]; then pass "clipboard screenshot written to docs/desktop-tests/$DE-clipboard.png ($(stat -c %s "$shot") bytes, $colors colours)"; else fail "clipboard screenshot looks blank ($colors colours)"; fi
+    else
+        fail "no clipboard screenshot produced"
+    fi
+
+    # (b) selecting an entry puts it on the clipboard. The palette stays open: a Wayland client can
+    # only set the selection while it has a mapped window (a hidden-palette select is rejected by
+    # the compositor in these headless sessions), which is also how Enter works in real use.
+    # After "before-select" is captured the list is: pinned FIRST_TEXT, before-select, DE-newest, ...
+    # so index 2 must be DE-newest (skips the pinned entry and the newest one).
+    de_copy "$DE-before-select"
+    wait_for 10 db_has "$DE-before-select" || true
+    sleep 1
+    de_clipboard_is "$DE-before-select" || info "clipboard not yet '$DE-before-select'"
+    # GLib picks org.gtk.Notifications when the shell offers it (GNOME), else org.freedesktop.Notifications
+    dbus-monitor --session "interface='org.freedesktop.Notifications',member='Notify'"         "interface='org.gtk.Notifications',member='AddNotification'" >"$TEST_ROOT/notify-monitor.log" 2>&1 &
+    track $!
+    sleep 1
+    local want="$DE-newest"
+    local rows_before; rows_before="$(db_order | wc -l)"
+    info "history order (top 4): $(db_order | head -4 | tr '\n' '|')"
+    MENEW_TEST=1 "$MENEW_BIN" __select-clipboard 2 >/dev/null 2>&1 || true
+    if wait_for 10 de_clipboard_is "$want"; then pass "MENEW_TEST=1 menew __select-clipboard 2 put '$want' on the clipboard"; else fail "clipboard does not hold '$want' after __select-clipboard 2"; fi
+    # the watcher / extension re-captures the selected text: it must bump the existing row, not add a twin
+    sleep 3
+    local rows_after; rows_after="$(db_order | wc -l)"
+    if [ "$rows_after" = "$rows_before" ]; then pass "re-copying an older entry did not add a row ($rows_before -> $rows_after)"; else fail "row count grew after selecting an older entry ($rows_before -> $rows_after)"; fi
+    if [ "$(db_count "$want")" = "1" ]; then pass "'$want' still has exactly one row"; else fail "'$want' has $(db_count "$want") rows"; fi
+    if [ "$(db_order | sed -n '2p')" = "$want" ]; then pass "selected entry moved to the top of the unpinned entries"; else fail "selected entry is not first after the pinned one: $(db_order | head -3 | tr '\n' '|')"; fi
+    if grep -a -q 'Test hook: Select clipboard entry 2 -> found=true' "$MENEW_LOG"; then pass "daemon log: select hook found entry 2"; else fail "select hook did not find entry 2"; fi
+    if [ -w /dev/uinput ]; then
+        info "/dev/uinput is writable: expecting the real Ctrl+V injection path"
+        if wait_for 10 grep -a -q 'Injected Ctrl+V through uinput' "$MENEW_LOG"; then pass "uinput Ctrl+V injection ran (daemon log)"; else fail "uinput writable but no injection logged"; fi
+    else
+        info "/dev/uinput not writable here: $(ls -l /dev/uinput 2>&1 | cut -c1-60); expecting the notification fallback"
+        sleep 2
+        if grep -a -q 'Copied. Press Ctrl+V to paste' "$TEST_ROOT/notify-monitor.log"; then pass "fallback notification 'Copied. Press Ctrl+V to paste' sent on the session bus"; else fail "no fallback notification seen on the bus"; tail -5 "$TEST_ROOT/notify-monitor.log"; fi
+    fi
+
+    # Ctrl+P / Ctrl+Delete code paths, through the hidden test hooks (no key events headless)
+    local pin_text="$fake_ssh" del_text="$fake_url" before after pos
+    pos="$(db_order | grep -nxF -- "$pin_text" | head -1 | cut -d: -f1)"; pos=$((pos - 1))
+    MENEW_TEST=1 "$MENEW_BIN" __pin-clipboard "$pos" >/dev/null 2>&1 || true
+    if [ "$(db_pinned "$pin_text")" = "1" ]; then pass "__pin-clipboard $pos pinned '$pin_text' (is_pinned=1)"; else fail "entry '$pin_text' not pinned (is_pinned=$(db_pinned "$pin_text"))"; fi
+    if [ "$(db_order | sed -n '1,2p' | grep -cxF -e "$pin_text" -e "$FIRST_TEXT")" = "2" ]; then pass "both pinned entries are listed first"; else fail "pinned entries are not first: $(db_order | head -3 | tr '\n' '|')"; fi
+    pos="$(db_order | grep -nxF -- "$pin_text" | head -1 | cut -d: -f1)"; pos=$((pos - 1))
+    MENEW_TEST=1 "$MENEW_BIN" __pin-clipboard "$pos" >/dev/null 2>&1 || true
+    if [ "$(db_pinned "$pin_text")" = "0" ]; then pass "second __pin-clipboard unpinned it again"; else fail "entry still pinned after the toggle"; fi
+    before="$(db_order | wc -l)"
+    pos="$(db_order | grep -nxF -- "$del_text" | head -1 | cut -d: -f1)"; pos=$((pos - 1))
+    MENEW_TEST=1 "$MENEW_BIN" __delete-clipboard "$pos" >/dev/null 2>&1 || true
+    after="$(db_order | wc -l)"
+    if ! db_has "$del_text" && [ "$after" = "$((before - 1))" ]; then pass "__delete-clipboard $pos removed '$del_text' only ($before -> $after entries)"; else fail "delete hook result unexpected ($before -> $after entries)"; fi
+
+    # (c) tray "Start at login" creates and removes the autostart file in the temporary HOME
+    local af="$XDG_CONFIG_HOME/autostart/menew.desktop" dest found id state
+    case "$af" in "$TEST_ROOT"/*) ;; *) fail "refusing to touch $af: not under the temporary HOME"; return;; esac
+    if [ ! -e "$af" ]; then pass "autostart is off by default (no $af)"; else fail "autostart file exists before any click"; fi
+    dest="$(tray_item_dest)"
+    if [ -z "$dest" ]; then fail "no tray item registered, cannot test the tray menu"; return; fi
+    found="$(tray_menu_find "$dest" 'Start at login')" || found=""
+    info "tray item $dest, dbusmenu entry for 'Start at login': '$found'"
+    if [ -z "$found" ]; then fail "tray menu has no 'Start at login' item"; return; fi
+    id="${found%% *}"
+    for t in 'Open Command Palette' 'Clipboard History' 'Clear history' 'Start at login' 'Quit Menew'; do
+        if tray_menu_find "$dest" "$t" >/dev/null; then pass "tray menu has '$t'"; else fail "tray menu lacks '$t'"; fi
+    done
+    tray_menu_click "$dest" "$id" >/dev/null 2>&1 || true
+    if wait_for 5 test -f "$af" && grep -qx 'Exec=menew' "$af"; then pass "clicking 'Start at login' created $af with Exec=menew"; else fail "autostart file not created"; fi
+    state="$(tray_menu_find "$dest" 'Start at login' | cut -d' ' -f2)"
+    if [ "$state" = "1" ]; then pass "menu item is now checked (toggle-state=1)"; else fail "menu item toggle-state is '$state' after enabling"; fi
+    tray_menu_click "$dest" "$id" >/dev/null 2>&1 || true
+    if wait_for 5 test ! -e "$af"; then pass "clicking again removed the autostart file"; else fail "autostart file still present"; fi
+    state="$(tray_menu_find "$dest" 'Start at login' | cut -d' ' -f2)"
+    if [ "$state" = "0" ]; then pass "menu item unchecked again (toggle-state=0)"; else fail "menu item toggle-state is '$state' after disabling"; fi
+
+    # tray "Clear history" removes the unpinned entries and keeps the pinned one
+    local clear_id; clear_id="$(tray_menu_find "$dest" 'Clear history' | cut -d' ' -f1)"
+    tray_menu_click "$dest" "$clear_id" >/dev/null 2>&1 || true
+    unpinned_zero() { [ "$(sqlite3 "$MENEW_DB_PATH" 'SELECT COUNT(*) FROM clipboard_entries WHERE is_pinned = 0;')" = "0" ]; }
+    if wait_for 5 unpinned_zero; then pass "tray 'Clear history' removed every unpinned entry"; else fail "unpinned entries remain after 'Clear history'"; fi
+    if db_has "$FIRST_TEXT" && [ "$(db_pinned "$FIRST_TEXT")" = "1" ]; then pass "pinned entry '$FIRST_TEXT' survived 'Clear history'"; else fail "pinned entry was removed by 'Clear history'"; fi
+}

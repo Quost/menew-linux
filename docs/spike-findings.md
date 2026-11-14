@@ -143,3 +143,24 @@ Environment limitations (not product bugs):
 4. A real two-type (text + password hint) selection could not be created headless; GNOME verifies the extension's hint branch, KDE verifies the helper with a stub `wl-paste`.
 5. The headless shell starts in the Overview; the script hides it before the screenshot.
 6. Still unverified: the extension on GNOME 45, 47-51 (only 46 tested).
+
+
+## Phase 2: functional MVP
+
+Clipboard history is a second mode of the palette (Tab switches modes; `menew clipboard` and the `Ctrl+Alt+V` GlobalShortcuts entry `toggle_clipboard` open it directly). Pure logic lives in `menew-core` and is unit tested: palette mode and list ordering/preview/age (`clipboard_view.rs`), `config.json` (`config.rs`), the autostart file (`autostart.rs`), the uinput Ctrl+V sequence and the paste decision (`paste.rs`). The command-line decision (`decide`) is extended with `clipboard`.
+
+Results (headless GNOME Shell 46 and KWin 5.27 in WSL, fake data in a temporary database):
+- `menew clipboard` opens the clipboard mode on both desktops; screenshots are in `docs/desktop-tests/gnome-clipboard.png` and `kde-clipboard.png`.
+- Selecting an entry (hidden hook, see below) puts its text on the real clipboard: read with `wl-paste` on KWin and with `St.Clipboard.get_text` inside GNOME Shell.
+- The tray menu (Open palette, Clipboard history, Clear history, Start at login, Quit) is exercised through its real dbusmenu: "Start at login" creates and removes `~/.config/autostart/menew.desktop` in the temporary HOME and toggles the checkmark; "Clear history" keeps pinned entries.
+- GNOME look fix: the window background is transparent and the content is a CSS card with rounded corners. A remaining faint 1px square outline came from the GTK `decoration` node and is neutralised in the same CSS; verified by zooming into the corner of the screenshot.
+
+Findings and limits:
+1. **A Wayland client can only set the clipboard while it has a mapped window.** With the palette hidden, GDK reports success but KWin keeps the previous selection. This is fine in real use (Enter is pressed on a visible palette; Menew copies first, then hides), and the desktop tests keep the palette open while selecting.
+2. **Test hooks.** `MENEW_TEST=1` must be set in the environment of the *daemon* (GApplication does not forward the client environment). It enables `menew __select-clipboard|__pin-clipboard|__delete-clipboard <index>` (0-based, in the list order shown by the palette). Headless sessions have no keyboard, so key events (Tab, Ctrl+P, Ctrl+Delete, Enter) cannot be injected; the hooks run the same code paths as those keys.
+3. **uinput paste is not verified end to end.** `/dev/uinput` exists in this WSL but is `root:root 0600`, so the injection could not run. Verified instead: the key sequence and the ioctl request numbers (unit tests) and the fallback path (the "Copied. Press Ctrl+V to paste" notification observed on the session bus).
+4. **Notifications on GNOME.** GLib sends notifications through `org.gtk.Notifications` when the shell offers it. gnome-shell resolves the sender through the desktop file matching the application id (`app.menew.Menew`), so the packaged `.desktop` file should be named `app.menew.Menew.desktop` for the notification to show in a real GNOME session (Phase 3). This was not verified: the test only proves the call is made.
+5. **Tray on GNOME in the tests.** The same StatusNotifierWatcher stand-in as on KDE is started so the tray registers; a plain GNOME session still needs the AppIndicator extension.
+6. **Exit status of the test scripts.** `dbus-run-session` does not pass on the child's exit status in this WSL, so the scripts always exited 0. The inner script now records its status in a file and the outer script exits with it.
+7. libadwaita feature `v1_2` is now enabled for `ActionRow::use_markup(false)` (clipboard text can contain `&` or `<`); Ubuntu 24.04 ships libadwaita 1.5.
+

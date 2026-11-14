@@ -19,7 +19,9 @@ if [ "${1:-}" != "--inner" ]; then
     unset WAYLAND_DISPLAY DISPLAY
     set +e
     dbus-run-session -- bash "$SCRIPT" --inner
-    rc=$?
+    # dbus-run-session does not reliably pass on the child's exit status, so the inner script
+    # records it in a file (see the EXIT trap in cleanup)
+    rc="$(cat "$TEST_ROOT/inner.rc" 2>/dev/null || echo 1)"
     set -e
     fusermount -uz "$XDG_RUNTIME_DIR/doc" 2>/dev/null || true
     rm -rf "$TEST_ROOT" 2>/dev/null || true
@@ -35,6 +37,7 @@ UUID="menew-bridge@menew.web.app"
 SHOT="$REPO_ROOT/docs/desktop-tests/gnome-palette.png"
 
 cleanup() {
+    echo "$?" > "$TEST_ROOT/inner.rc"
     cp "$SHELL_LOG" /tmp/menew-last-gnome-shell.log 2>/dev/null; cp "$MENEW_LOG" /tmp/menew-last-gnome-menew.log 2>/dev/null
     "$MENEW_BIN" quit >/dev/null 2>&1 || true
     kill_tracked
@@ -86,6 +89,17 @@ else
     pass "no extension errors in the shell log"
 fi
 grep -n 'MenewExtension' "$SHELL_LOG" | sed 's/^/    log: /' || true
+
+# A plain GNOME session has no StatusNotifierWatcher (that is what the AppIndicator extension
+# provides), so the same stand-in used for KDE is started to let the tray register and be tested
+python3 "$HERE/watcher.py" >"$TEST_ROOT/watcher.log" 2>&1 &
+track $!
+wait_for 10 grep -q 'watcher ready' "$TEST_ROOT/watcher.log" || fail "StatusNotifierWatcher stand-in did not start"
+
+# the tests assert English UI strings
+export LC_ALL=C.UTF-8
+# enables the hidden `__select-clipboard|__pin-clipboard|__delete-clipboard` commands in the daemon
+export MENEW_TEST=1
 
 # start menew (daemon)
 "$MENEW_BIN" >"$MENEW_LOG" 2>&1 &
@@ -162,7 +176,25 @@ if grep -a -q 'Shortcut portal status' "$MENEW_LOG"; then
     info "GlobalShortcuts: $(grep -a 'Shortcut portal status' "$MENEW_LOG" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-220)"
 fi
 if grep -a -q 'Shortcut portal status: Success\|Shortcut portal status: Active' "$MENEW_LOG"; then pass "GlobalShortcuts portal registered"; else skip "GlobalShortcuts portal not available on this headless GNOME (result recorded above, not a failure)"; fi
-if grep -a -q 'Could not start tray' "$MENEW_LOG"; then skip "tray: no StatusNotifierWatcher on plain GNOME (needs AppIndicator extension); expected"; fi
+if grep -a -q 'Could not start tray' "$MENEW_LOG"; then fail "tray did not start even with the StatusNotifierWatcher stand-in"; else pass "tray registered with the StatusNotifierWatcher stand-in (a plain GNOME session needs the AppIndicator extension for this)"; fi
+
+# Phase 2: clipboard mode, selecting an entry, pin/delete hooks, tray actions
+DE=gnome
+FIRST_TEXT="hello gnome"
+de_copy() { shell_copy_text "$1" >/dev/null; }
+de_clipboard_is() {
+    # St.Clipboard.get_text is asynchronous: store the result in a global, then read it back
+    shell_eval "globalThis.__menewClip = null; const St = imports.gi.St; St.Clipboard.get_default().get_text(St.ClipboardType.CLIPBOARD, (c, t) => { globalThis.__menewClip = t; }); 1" >/dev/null 2>&1
+    sleep 1
+    local out; out="$(shell_eval "globalThis.__menewClip" 2>/dev/null)"
+    [ "$out" = "(true, '\"$1\"')" ] || [ "$out" = "(true, '$1')" ]
+}
+de_screenshot() {
+    local res
+    res="$(gdbus call --session --dest org.gnome.Shell.Screenshot --object-path /org/gnome/Shell/Screenshot         --method org.gnome.Shell.Screenshot.Screenshot false false "$TEST_ROOT/shot2.png" 2>&1 || true)"
+    if [ -s "$TEST_ROOT/shot2.png" ]; then cp "$TEST_ROOT/shot2.png" "$1"; rm -f "$TEST_ROOT/shot2.png"; else info "Screenshot -> $res"; fi
+}
+phase2_checks
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "RESULT: all checks passed"; else echo "RESULT: $FAILS check(s) FAILED"; fi

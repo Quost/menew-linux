@@ -18,6 +18,8 @@ use libadwaita as adw;
 
 use menew_clipboard::ClipboardService;
 use menew_core::{set_language, ClipboardDatabase, Language};
+#[cfg(target_os = "linux")]
+use menew_core::PaletteMode;
 use menew_shortcuts::ShortcutEvent;
 use menew_tray::TrayCommand;
 
@@ -28,21 +30,47 @@ enum Action {
     StayHidden,
     ShowPalette,
     TogglePalette,
+    /// Open the palette in clipboard mode.
+    ShowClipboard,
+    /// Test hooks (only with `MENEW_TEST=1`): simulate Enter / Ctrl+P / Ctrl+Delete on the
+    /// Nth (0-based) clipboard entry of the unfiltered list.
+    SelectClipboard(usize),
+    PinClipboard(usize),
+    DeleteClipboard(usize),
     Quit,
 }
 
 /// `args` excludes the program name. `is_remote` is true when this command line
 /// was forwarded from another process to the already-running primary instance.
-fn decide(args: &[String], is_remote: bool) -> Action {
+/// `test_mode` is true when the daemon runs with `MENEW_TEST=1`, which enables the hidden test commands.
+fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
     if args.iter().any(|a| a == "quit") {
         Action::Quit
     } else if args.iter().any(|a| a == "toggle") {
         Action::TogglePalette
+    } else if args.iter().any(|a| a == "clipboard") {
+        Action::ShowClipboard
+    } else if let Some(action) = test_mode.then(|| test_action(args)).flatten() {
+        action
     } else if is_remote {
         Action::ShowPalette
     } else {
         Action::StayHidden
     }
+}
+
+/// Parse `__select-clipboard|__pin-clipboard|__delete-clipboard <index>`.
+fn test_action(args: &[String]) -> Option<Action> {
+    let (pos, make): (usize, fn(usize) -> Action) =
+        if let Some(p) = args.iter().position(|a| a == "__select-clipboard") {
+            (p, Action::SelectClipboard)
+        } else if let Some(p) = args.iter().position(|a| a == "__pin-clipboard") {
+            (p, Action::PinClipboard)
+        } else {
+            let p = args.iter().position(|a| a == "__delete-clipboard")?;
+            (p, Action::DeleteClipboard)
+        };
+    args.get(pos + 1)?.parse().ok().map(make)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -181,11 +209,7 @@ fn run_gtk_app(args: Vec<String>) {
     app.connect_startup(move |application| {
         info!("GApplication startup: primary instance initializing background services");
 
-        // 1. Create Palette Window
-        let palette = menew_ui::PaletteWindow::create(application);
-        *p_startup.borrow_mut() = Some(Rc::clone(&palette));
-
-        // 2. Open DB and init ClipboardService
+        // 1. Open DB (shared by the clipboard service and the palette)
         let db = match ClipboardDatabase::open_default() {
             Ok(database) => database,
             Err(e) => {
@@ -193,6 +217,11 @@ fn run_gtk_app(args: Vec<String>) {
                 ClipboardDatabase::open_in_memory().expect("In-memory SQLite failed")
             }
         };
+
+        // 2. Create Palette Window and init ClipboardService
+        let palette = menew_ui::PaletteWindow::create(application, db.clone());
+        *p_startup.borrow_mut() = Some(Rc::clone(&palette));
+        let db_tray = db.clone();
         let clipboard_service = Arc::new(ClipboardService::new(db));
 
         // 3. Setup communication channels
@@ -237,6 +266,11 @@ fn run_gtk_app(args: Vec<String>) {
             while let Some(cmd) = tray_rx.recv().await {
                 match cmd {
                     TrayCommand::OpenPalette => p_tray.toggle(),
+                    TrayCommand::OpenClipboard => p_tray.show_mode(PaletteMode::Clipboard),
+                    TrayCommand::ClearHistory => match db_tray.clear_unpinned() {
+                        Ok(n) => info!("Tray: cleared {} unpinned clipboard entries", n),
+                        Err(e) => warn!("Tray: failed to clear clipboard history: {}", e),
+                    },
                     TrayCommand::Quit => app_handle.quit(),
                 }
             }
@@ -244,8 +278,11 @@ fn run_gtk_app(args: Vec<String>) {
 
         let p_short = Rc::clone(&palette);
         glib::MainContext::default().spawn_local(async move {
-            while let Some(ShortcutEvent::TogglePalette) = shortcut_rx.recv().await {
-                p_short.toggle();
+            while let Some(ev) = shortcut_rx.recv().await {
+                match ev {
+                    ShortcutEvent::TogglePalette => p_short.toggle(),
+                    ShortcutEvent::ToggleClipboard => p_short.toggle_mode(PaletteMode::Clipboard),
+                }
             }
         });
     });
@@ -268,14 +305,38 @@ fn run_gtk_app(args: Vec<String>) {
             .skip(1)
             .map(|a| a.to_string_lossy().into_owned())
             .collect();
-        let action = decide(&cmd_args, cmd_line.is_remote());
+        // The hidden test commands are enabled by the daemon's own environment. GApplication does
+        // not forward the client's environment, so MENEW_TEST=1 must be set when the daemon starts.
+        let test_mode = std::env::var("MENEW_TEST").map(|v| v == "1").unwrap_or(false);
+        let action = decide(&cmd_args, cmd_line.is_remote(), test_mode);
         info!("CLI command line {:?} -> {:?}", cmd_args, action);
+
+        // The primary instance always stays alive without a visible window (tray only),
+        // whatever its first command was (e.g. `menew clipboard` as the first launch)
+        if !cmd_line.is_remote() && action != Action::Quit {
+            std::mem::forget(app_cmd.hold());
+        }
 
         match action {
             Action::Quit => app_cmd.quit(),
-            Action::StayHidden => {
-                // Keep the daemon alive without a visible window (tray only)
-                std::mem::forget(app_cmd.hold());
+            Action::StayHidden => {}
+            Action::ShowClipboard => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    palette.show_mode(PaletteMode::Clipboard);
+                }
+            }
+            Action::SelectClipboard(index)
+            | Action::PinClipboard(index)
+            | Action::DeleteClipboard(index) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    let op = match action {
+                        Action::PinClipboard(_) => menew_ui::TestOp::Pin,
+                        Action::DeleteClipboard(_) => menew_ui::TestOp::Delete,
+                        _ => menew_ui::TestOp::Select,
+                    };
+                    let found = palette.test_clipboard_op(op, index);
+                    info!("Test hook: {:?} clipboard entry {} -> found={}", op, index, found);
+                }
             }
             Action::ShowPalette => {
                 if let Some(palette) = p_cmd.borrow().as_ref() {
@@ -312,18 +373,62 @@ mod tests {
 
     #[test]
     fn first_launch_without_args_stays_hidden() {
-        assert_eq!(decide(&v(&[]), false), Action::StayHidden);
+        assert_eq!(decide(&v(&[]), false, false), Action::StayHidden);
     }
 
     #[test]
     fn remote_without_args_shows_palette() {
-        assert_eq!(decide(&v(&[]), true), Action::ShowPalette);
+        assert_eq!(decide(&v(&[]), true, false), Action::ShowPalette);
     }
 
     #[test]
     fn toggle_and_quit() {
-        assert_eq!(decide(&v(&["toggle"]), true), Action::TogglePalette);
-        assert_eq!(decide(&v(&["toggle"]), false), Action::TogglePalette);
-        assert_eq!(decide(&v(&["quit"]), true), Action::Quit);
+        assert_eq!(decide(&v(&["toggle"]), true, false), Action::TogglePalette);
+        assert_eq!(decide(&v(&["toggle"]), false, false), Action::TogglePalette);
+        assert_eq!(decide(&v(&["quit"]), true, false), Action::Quit);
+    }
+
+    #[test]
+    fn clipboard_opens_clipboard_mode() {
+        assert_eq!(decide(&v(&["clipboard"]), true, false), Action::ShowClipboard);
+        assert_eq!(decide(&v(&["clipboard"]), false, false), Action::ShowClipboard);
+    }
+
+    #[test]
+    fn quit_wins_over_other_words() {
+        assert_eq!(decide(&v(&["clipboard", "quit"]), true, false), Action::Quit);
+    }
+
+    #[test]
+    fn select_clipboard_only_in_test_mode() {
+        let args = v(&["__select-clipboard", "1"]);
+        assert_eq!(decide(&args, true, true), Action::SelectClipboard(1));
+        // without MENEW_TEST=1 the hidden command is just an unknown argument
+        assert_eq!(decide(&args, true, false), Action::ShowPalette);
+        assert_eq!(decide(&args, false, false), Action::StayHidden);
+    }
+
+    #[test]
+    fn select_clipboard_needs_a_valid_index() {
+        assert_eq!(decide(&v(&["__select-clipboard"]), true, true), Action::ShowPalette);
+        assert_eq!(decide(&v(&["__select-clipboard", "x"]), true, true), Action::ShowPalette);
+        assert_eq!(
+            test_action(&v(&["__select-clipboard", "0"])),
+            Some(Action::SelectClipboard(0))
+        );
+    }
+
+    #[test]
+    fn pin_and_delete_hooks() {
+        assert_eq!(
+            decide(&v(&["__pin-clipboard", "3"]), true, true),
+            Action::PinClipboard(3)
+        );
+        assert_eq!(
+            decide(&v(&["__delete-clipboard", "2"]), true, true),
+            Action::DeleteClipboard(2)
+        );
+        assert_eq!(decide(&v(&["__pin-clipboard", "3"]), true, false), Action::ShowPalette);
+        assert_eq!(decide(&v(&["__delete-clipboard", "2"]), false, false), Action::StayHidden);
     }
 }
