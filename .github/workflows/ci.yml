@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dev packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libdbus-1-dev pkg-config build-essential
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --workspace --all-targets
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace
+
+  desktop-tests:
+    # Headless GNOME/KDE sessions are heavy and timing sensitive: allowed to fail, never blocks merges.
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dev packages and compositors
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libdbus-1-dev pkg-config build-essential \
+            gnome-shell mutter kwin-wayland kde-spectacle qtwayland5 wl-clipboard sqlite3 dbus-user-session \
+            xdg-desktop-portal xdg-desktop-portal-gtk python3-gi gir1.2-gtk-4.0 psmisc procps
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build
+      - name: GNOME
+        run: MENEW_BIN="$PWD/target/debug/menew" bash scripts/desktop-test/gnome.sh
+      - name: KDE
+        run: MENEW_BIN="$PWD/target/debug/menew" bash scripts/desktop-test/kde.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-test-screenshots
+          path: docs/desktop-tests/*.png

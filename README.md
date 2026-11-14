@@ -51,6 +51,15 @@ menew quit     # quit the running daemon
 
 The palette also opens from the global shortcut (`Ctrl+Alt+Space`) or the tray menu.
 
+### Desktop tests (headless GNOME and KDE)
+
+```bash
+bash scripts/desktop-test/gnome.sh
+bash scripts/desktop-test/kde.sh
+```
+
+See `scripts/desktop-test/README.md` for packages, what is real vs substituted, and screenshots.
+
 ## License
 
 MIT (c) 2026 Matheus Quost

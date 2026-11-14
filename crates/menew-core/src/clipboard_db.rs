@@ -28,6 +28,10 @@ impl ClipboardDatabase {
     }
 
     pub fn default_db_path() -> PathBuf {
+        // Test hook: point the daemon at a temporary database
+        if let Some(p) = std::env::var_os("MENEW_DB_PATH") {
+            return PathBuf::from(p);
+        }
         dirs::data_dir()
             .unwrap_or_else(|| PathBuf::from("."))
             .join("menew")

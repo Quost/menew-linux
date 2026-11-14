@@ -122,3 +122,24 @@ Support putting selected content on the system clipboard (`gdk::Clipboard::set_t
 The `wl-paste --watch` child is owned by `WatcherGuard`, which kills and reaps it on drop. The primary instance drops it in `connect_shutdown`, and any other exit path drops it with the process state. A SIGKILL of the daemon cannot run `Drop`, so a watcher could still be orphaned in that case (not handled).
 
 The helper `__clipboard-push` checks MIME types with a second `wl-paste --list-types` call, which can race with a new copy (acceptable for the spike).
+
+
+## Phase 1 desktop tests
+
+Headless sessions in WSL Ubuntu 24.04 (GNOME Shell 46 `--headless --virtual-monitor`, KWin 5.27 `--virtual`). Scripts: `scripts/desktop-test/`. Packages installed in WSL: gnome-shell, gnome-shell-extensions, mutter, kwin-wayland, kde-spectacle, qtwayland5, wl-clipboard, xdg-desktop-portal(-gnome/-kde), sqlite3, grim, imagemagick, dbus-user-session, dbus-x11, libglib2.0-bin, python3-yaml, procps, psmisc (plus their dependencies).
+
+Results:
+- **GNOME**: the extension loads on GNOME Shell 46 and the clipboard path (extension -> `org.menew.ClipboardService` -> SQLite) works. Palette opens with `menew toggle` and renders.
+- **KDE**: `wl-paste --watch` captures single and multi-line text exactly (1 entry for a multi-line copy); tray registers; no `wl-paste` left after `menew quit`; palette renders.
+- **GlobalShortcuts portal**: `Unsupported` on both (no backend implementing `org.freedesktop.portal.GlobalShortcuts` headless; the fallback guidance is printed). Not verified on a real GNOME 48+ or Plasma 6 session.
+- **Tray on GNOME**: `Could not start tray service`, because plain GNOME has no StatusNotifierWatcher (expected, needs the AppIndicator extension).
+
+Product bugs found by the tests: **none** in the runtime code. The only product change is the test hook `MENEW_DB_PATH` (overrides the database path in `ClipboardDatabase::default_db_path`).
+
+Environment limitations (not product bugs):
+1. Headless GNOME Shell has no keyboard, so `wl-copy`/`wl-paste` fail ("This seat has no keyboard") or hang; real `wl-copy` is therefore untested on GNOME. The test copies from inside the shell.
+2. `gnome-extensions` CLI does not work headless (`org.gnome.Shell.Extensions` is not exported); state is read via `org.gnome.Shell.Eval`.
+3. `grim` fails on KWin 5.27 (no wlr-screencopy); `spectacle` with `QT_QPA_PLATFORM=wayland` works.
+4. A real two-type (text + password hint) selection could not be created headless; GNOME verifies the extension's hint branch, KDE verifies the helper with a stub `wl-paste`.
+5. The headless shell starts in the Overview; the script hides it before the screenshot.
+6. Still unverified: the extension on GNOME 45, 47-51 (only 46 tested).

@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# Headless KDE (KWin) desktop test. Run inside WSL Ubuntu 24.04:
+#   bash scripts/desktop-test/kde.sh
+set -euo pipefail
+
+SCRIPT="$(readlink -f "${BASH_SOURCE[0]}")"
+HERE="$(dirname "$SCRIPT")"
+
+if [ "${1:-}" != "--inner" ]; then
+    export TEST_ROOT
+    TEST_ROOT="$(mktemp -d /tmp/menew-kde-XXXXXX)"
+    export HOME="$TEST_ROOT/home"
+    mkdir -p "$HOME"
+    export XDG_RUNTIME_DIR="$TEST_ROOT/run"
+    mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
+    export XDG_CONFIG_HOME="$HOME/.config" XDG_DATA_HOME="$HOME/.local/share" XDG_CACHE_HOME="$HOME/.cache"
+    export GSETTINGS_BACKEND=keyfile
+    unset WAYLAND_DISPLAY DISPLAY
+    set +e
+    dbus-run-session -- bash "$SCRIPT" --inner
+    rc=$?
+    set -e
+    fusermount -uz "$XDG_RUNTIME_DIR/doc" 2>/dev/null || true
+    rm -rf "$TEST_ROOT" 2>/dev/null || true
+    exit $rc
+fi
+
+# shellcheck source=lib.sh
+source "$HERE/lib.sh"
+export MENEW_DB_PATH="$TEST_ROOT/clipboard.db"
+KWIN_LOG="$TEST_ROOT/kwin.log"
+MENEW_LOG="$TEST_ROOT/menew.log"
+SHOT="$REPO_ROOT/docs/desktop-tests/kde-palette.png"
+
+cleanup() {
+    cp "$KWIN_LOG" /tmp/menew-last-kde-kwin.log 2>/dev/null; cp "$MENEW_LOG" /tmp/menew-last-kde-menew.log 2>/dev/null
+    "$MENEW_BIN" quit >/dev/null 2>&1 || true
+    kill_tracked
+}
+trap cleanup EXIT
+
+[ -x "$MENEW_BIN" ] || { echo "FAIL: menew binary not found at $MENEW_BIN (build it first)"; exit 1; }
+
+# headless KWin on its own virtual output
+export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=KDE
+kwin_wayland --virtual --socket wayland-kde --width 1280 --height 800 --no-lockscreen >"$KWIN_LOG" 2>&1 &
+track $!
+if wait_for 30 test -S "$XDG_RUNTIME_DIR/wayland-kde"; then
+    pass "headless kwin_wayland started (socket wayland-kde present)"
+else
+    fail "kwin_wayland did not create its wayland socket"; tail -30 "$KWIN_LOG"; exit 1
+fi
+export WAYLAND_DISPLAY=wayland-kde
+sleep 2
+
+# Minimal StatusNotifierWatcher: plasmashell is not installed in this headless setup
+python3 "$HERE/watcher.py" >"$TEST_ROOT/watcher.log" 2>&1 &
+track $!
+wait_for 10 grep -q 'watcher ready' "$TEST_ROOT/watcher.log" || fail "StatusNotifierWatcher stand-in did not start"
+
+# menew daemon (spawns the wl-paste watcher)
+"$MENEW_BIN" >"$MENEW_LOG" 2>&1 &
+MENEW_PID=$!
+track "$MENEW_PID"
+# the watcher is the child process named exactly "wl-paste" of the daemon (never match command lines)
+watcher_pid() { pgrep -P "$MENEW_PID" -x wl-paste | head -1; }
+if wait_for 20 watcher_pid; then
+    WATCHER_PID="$(watcher_pid)"
+    pass "wl-paste watcher started: pid $WATCHER_PID, child of menew pid $MENEW_PID ($(tr '\0' ' ' < /proc/"$WATCHER_PID"/cmdline | cut -c1-150))"
+else
+    WATCHER_PID=""
+    fail "wl-paste watcher did not start as a child of menew"
+fi
+sleep 2
+
+if [ -n "${EXPLORE_CMD:-}" ]; then bash -c "$EXPLORE_CMD" || true; exit 0; fi
+
+# check 1: single line and multi-line text
+printf 'hello kde' | wl-copy
+if wait_for 10 db_has "hello kde"; then pass "wl-copy 'hello kde' saved in SQLite"; else fail "'hello kde' not found in SQLite"; fi
+sleep 1
+printf 'line one\nline two\n  indented line three' | wl-copy
+EXPECT=$'line one\nline two\n  indented line three'
+wait_for 10 db_has "$EXPECT" || true
+MULTI_COUNT="$(db_count "$EXPECT")"
+if [ "$MULTI_COUNT" = "1" ]; then pass "multi-line text saved exactly as copied, as 1 entry"; else fail "multi-line text entries: '$MULTI_COUNT' (expected 1)"; fi
+SPLIT="$(sqlite3 "$MENEW_DB_PATH" "SELECT COUNT(*) FROM clipboard_entries WHERE text_content IN ('line one','line two','  indented line three');")"
+[ "$SPLIT" = "0" ] && pass "multi-line text was not split into separate entries" || fail "multi-line text was split into $SPLIT entries"
+info "rows: $(sqlite3 "$MENEW_DB_PATH" "SELECT id || ':' || replace(text_content, char(10), '\n') FROM clipboard_entries;" | tr '\n' ' ')"
+
+# check 2: password hint ignored.
+# A real two-type selection (text/plain + hint) cannot be created headless: wl-copy offers one type
+# and GTK clients never get keyboard focus on a virtual KWin without input devices. So the helper
+# that wl-paste --watch calls (menew __clipboard-push) is run directly with a stub `wl-paste` that
+# reports the MIME list of a password manager copy. This exercises the real MIME check in the
+# helper and the real daemon over D-Bus; it does NOT exercise wl-paste itself.
+mkdir -p "$TEST_ROOT/fakebin"
+cat > "$TEST_ROOT/fakebin/wl-paste" <<'STUB'
+#!/bin/sh
+[ "$1" = "--list-types" ] && { printf 'text/plain
+x-kde-passwordManagerHint
+'; exit 0; }
+exit 1
+STUB
+chmod +x "$TEST_ROOT/fakebin/wl-paste"
+printf 'secret-kde-pw' | PATH="$TEST_ROOT/fakebin:$PATH" "$MENEW_BIN" __clipboard-push 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | sed 's/^/INFO: helper: /' || true
+sleep 1
+if db_has "secret-kde-pw"; then fail "password-hint copy was saved"; else pass "helper ignored a copy whose MIME list has x-kde-passwordManagerHint (stubbed wl-paste)"; fi
+# control: same helper path with a plain MIME list must be saved, so the test above is meaningful
+sed -i 's/x-kde-passwordManagerHint//' "$TEST_ROOT/fakebin/wl-paste"
+printf 'control-kde-plain' | PATH="$TEST_ROOT/fakebin:$PATH" "$MENEW_BIN" __clipboard-push >/dev/null 2>&1 || true
+if wait_for 5 db_has "control-kde-plain"; then pass "control: same helper path saves a copy without the hint"; else fail "control copy not saved; the password test above is inconclusive"; fi
+
+# check 3: tray registered
+sleep 1
+ITEMS="$(gdbus call --session --dest org.kde.StatusNotifierWatcher --object-path /StatusNotifierWatcher \
+    --method org.freedesktop.DBus.Properties.Get org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems 2>&1 || true)"
+info "RegisteredStatusNotifierItems -> $ITEMS"
+if echo "$ITEMS" | grep -qi 'menew\|StatusNotifierItem'; then pass "tray item registered with the StatusNotifierWatcher"; else fail "no tray item registered"; fi
+
+# check 5 (before quit): palette screenshot
+mkdir -p "$(dirname "$SHOT")"
+rm -f "$SHOT"
+"$MENEW_BIN" toggle >/dev/null 2>&1 || true
+sleep 3
+# grim needs wlr-screencopy, which KWin 5.27 does not implement; spectacle uses KWin's ScreenShot2 D-Bus API
+if QT_QPA_PLATFORM=wayland timeout 30 spectacle -b -n -f -o "$TEST_ROOT/shot.png" >"$TEST_ROOT/spectacle.log" 2>&1 && [ -s "$TEST_ROOT/shot.png" ]; then
+    cp "$TEST_ROOT/shot.png" "$SHOT"
+    pass "palette screenshot (spectacle) written to docs/desktop-tests/kde-palette.png ($(stat -c %s "$SHOT") bytes)"
+else
+    info "spectacle: $(tail -3 "$TEST_ROOT/spectacle.log" | tr '
+' ' ')"
+    skip "screenshot NOT taken: spectacle failed (see INFO above)"
+fi
+
+# GlobalShortcuts portal: record, do not force
+grep -a 'Shortcut portal status' "$MENEW_LOG" | sed 's/\x1b\[[0-9;]*m//g' | cut -c1-240 | sed 's/^/INFO: GlobalShortcuts: /' || true
+if grep -a -q 'Shortcut portal status: Success' "$MENEW_LOG"; then pass "GlobalShortcuts portal registered"; else skip "GlobalShortcuts portal not available (no portal backend headless); recorded above"; fi
+
+# check 4: quit leaves no wl-paste
+"$MENEW_BIN" quit >/dev/null 2>&1 || true
+sleep 2
+if [ -n "$WATCHER_PID" ] && kill -0 "$WATCHER_PID" 2>/dev/null; then
+    fail "watcher pid $WATCHER_PID still alive after menew quit"
+elif kill -0 "$MENEW_PID" 2>/dev/null; then
+    fail "menew pid $MENEW_PID still alive after menew quit"
+elif [ -n "$(pgrep -P "$MENEW_PID" -x wl-paste)" ]; then
+    fail "a wl-paste child of menew pid $MENEW_PID remains"
+else
+    pass "after menew quit: menew pid $MENEW_PID and its wl-paste watcher pid ${WATCHER_PID:-?} are gone, no wl-paste child remains"
+fi
+
+echo "----"
+if [ "$FAILS" -eq 0 ]; then echo "RESULT: all checks passed"; else echo "RESULT: $FAILS check(s) FAILED"; fi
+[ "$FAILS" -eq 0 ]
