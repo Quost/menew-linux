@@ -11,5 +11,5 @@ chrono = "0.4"
 tracing = "0.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-gtk4 = { version = "0.9", package = "gtk4" }
+gtk4 = { version = "0.9", package = "gtk4", features = ["v4_12"] }
 libadwaita = { version = "0.7", package = "libadwaita", features = ["v1_5"] }

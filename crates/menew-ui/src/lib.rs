@@ -72,6 +72,8 @@ impl ClipHooks {
 }
 
 #[cfg(target_os = "linux")]
+pub mod annotate;
+#[cfg(target_os = "linux")]
 pub mod dialogs;
 #[cfg(target_os = "linux")]
 pub mod notes;
@@ -243,7 +245,7 @@ pub mod palette {
         pub fn create(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>, hooks: ClipHooks) -> Rc<Self> {
             if let Some(display) = gdk::Display::default() {
                 let provider = gtk4::CssProvider::new();
-                provider.load_from_data(CSS);
+                provider.load_from_string(CSS);
                 gtk4::style_context_add_provider_for_display(
                     &display,
                     &provider,
@@ -643,6 +645,11 @@ pub mod palette {
 
         pub fn set_on_show(&self, f: Rc<dyn Fn()>) {
             *self.on_show.borrow_mut() = Some(f);
+        }
+
+        /// The clipboard text read when the palette opened (not when it carries a password hint).
+        pub fn clipboard_text_now(&self) -> Option<String> {
+            self.clip_text.borrow().clone()
         }
 
         /// The installed apps, as scanned when the palette last opened.

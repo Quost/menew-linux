@@ -3,6 +3,7 @@ pub mod clip_item;
 pub mod clip_policy;
 pub mod clip_smart;
 pub mod calculator;
+pub mod capture;
 pub mod clipboard_db;
 pub mod clipboard_view;
 pub mod config;

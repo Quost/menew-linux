@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- Asks for the user's own password before Menew opens a protected note (Touch ID on the Mac).
+     auth_self_keep: the user's password, remembered for a few minutes. -->
+<policyconfig>
+  <vendor>Menew</vendor>
+  <vendor_url>https://menew.web.app</vendor_url>
+  <action id="app.menew.Menew.unlock-notes">
+    <description>Open protected notes</description>
+    <description xml:lang="pt">Abrir notas protegidas</description>
+    <description xml:lang="de">Geschützte Notizen öffnen</description>
+    <description xml:lang="es">Abrir notas protegidas</description>
+    <description xml:lang="zh">打开受保护的笔记</description>
+    <message>Menew needs your password to open a protected note</message>
+    <message xml:lang="pt">O Menew precisa da sua senha para abrir uma nota protegida</message>
+    <message xml:lang="de">Menew braucht dein Passwort, um eine geschützte Notiz zu öffnen</message>
+    <message xml:lang="es">Menew necesita tu contraseña para abrir una nota protegida</message>
+    <message xml:lang="zh">Menew 需要你的密码来打开受保护的笔记</message>
+    <defaults>
+      <allow_any>auth_self_keep</allow_any>
+      <allow_inactive>auth_self_keep</allow_inactive>
+      <allow_active>auth_self_keep</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

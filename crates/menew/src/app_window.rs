@@ -14,7 +14,6 @@ use std::rc::Rc;
 pub struct AppWindow {
     pub window: Rc<MenewWindow>,
     pub notes: Rc<NotesView>,
-    pub store: Rc<RefCell<NotesStore>>,
 }
 
 /// Extra sections from the other modules (performance, settings, overview), built before the window.
@@ -36,7 +35,7 @@ pub fn setup(app: &adw::Application, cmds: &Rc<Commands>, palette: &Rc<menew_ui:
     });
     sections.extend(after.into_iter().map(|f| f()));
     let window = MenewWindow::new(app, sections);
-    let me = Rc::new(AppWindow { window, notes: notes_view, store: Rc::clone(&store) });
+    let me = Rc::new(AppWindow { window, notes: notes_view });
 
     // palette items for the notes
     let s = Rc::clone(&store);

@@ -3,6 +3,8 @@ mod alerts;
 #[cfg(target_os = "linux")]
 mod app_window;
 #[cfg(target_os = "linux")]
+mod capture;
+#[cfg(target_os = "linux")]
 mod commands;
 #[cfg(target_os = "linux")]
 use std::cell::RefCell;
@@ -285,6 +287,7 @@ fn run_gtk_app(args: Vec<String>) {
         let cmds = commands::Commands::new(Rc::clone(&palette), Arc::clone(&rt_startup));
         *c_startup.borrow_mut() = Some(Rc::clone(&cmds));
         let _shell = app_window::setup(application, &cmds, &palette, vec![], vec![]);
+        capture::setup(application, &cmds, &palette, Arc::clone(&rt_startup));
         let db_tray = db.clone();
 
         // copies reach the palette (paste queue, open list) on the GTK thread
