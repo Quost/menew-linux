@@ -4,7 +4,7 @@ Private, native productivity utility for Linux desktops (GNOME and KDE Plasma on
 
 Linux port of [Menew for macOS](https://github.com/Quost/menew), in progress.
 
-> **Status: not released yet.** Only part of the Mac app exists here so far (the command palette with its calculations, conversions, text transforms, quick links, emoji, timers, focus and script commands; text clipboard history; tray). The first release will come when the core of the Mac app is ported: see [docs/parity.md](docs/parity.md) for every feature and its Linux status.
+> **Status: release 1 candidate, not released yet.** The core of the Mac app is ported (every R1 row of [docs/parity.md](docs/parity.md)): command palette, clipboard history, notes, screenshots, windows, quick actions, system monitor, the tray popover, the Menew window, settings and the welcome tour. It has been tested on headless GNOME Shell 46 and KWin 5.27 sessions; a pass on real GNOME and KDE desktops comes before the first tag.
 
 ## Features
 
@@ -28,13 +28,20 @@ Linux port of [Menew for macOS](https://github.com/Quost/menew), in progress.
   - **Pause** capture for 15 minutes, 1 hour or until you resume: nothing is read while paused. Apps listed in `clipboard_ignored_apps` (`config.json`) are skipped on GNOME.
   - **Paste queue**: turn it on, copy several things, then run **Paste next** (`Ctrl+Alt+N`, `menew paste-next`, tray or palette) once per item.
   - **Snippets** with `{date}`, `{time}`, `{weekday}`, `{tomorrow}`, `{clipboard}`, `{cursor}` and `{input:Name}`, in the palette and in the Snippets filter.
-- **Tray icon**: Open palette, Clipboard history, Clear history (keeps pinned entries), Start at login, Quit.
+- **Notes** (`Ctrl+Alt+J` for a new one, or the Notes section of the Menew window): many notes with #tags and search, Markdown styled while you type with clickable `- [ ]` checklists. **Protected notes** keep only their title in `notes.json`; the text goes to the system keyring (GNOME Keyring or KWallet, through `secret-tool`) and opening them asks for your password (polkit). **Password notes** are a title and fields with hidden values: Copy marks the value as a password (clipboard managers skip it) and clears it after 30 seconds.
+- **Screenshots** (`Ctrl+Alt+S`): the desktop's own picker (Screenshot portal) for an area, a window or the screen, then an editor with arrows, rectangles, pen, text and blur, Copy, Save or drag the image out. **Copy text from the screen** (`Ctrl+Alt+O`, tesseract), **read a QR code** from the screen (zbarimg), and **show a QR code** of the copied text, of `qr <text>` or of the current Wi-Fi (qrencode, nmcli).
+- **Windows**: the Mac's positions (halves, quarters, thirds, two thirds, almost maximized, center, maximize, next display) from the palette or `Ctrl+Alt+Shift+Arrows` and `Ctrl+Alt+Enter`. On KDE Plasma through a KWin script; on GNOME through the Menew extension.
+- **Quick actions**: mute the microphone (`Ctrl+Alt+M`) or the sound, switch the audio output or input, dark mode, keep awake (`awake 2h`), lock the screen, empty the trash, pick a color from the screen, plain text clipboard, eject disks, brightness (`brightness 40`, also external displays with ddcutil), quit or force quit apps (`quit firefox`, `kill firefox`, "Quit all apps" keeps a never-quit list), and stop servers on ports (`port 3000`).
+- **System monitor** (Performance section): CPU and memory with live graphs, GPU, disk space and speed, network, battery health, cycles and watts, uptime, and the apps using the most CPU and memory with Quit. Pick metrics to show next to the tray icon.
+- **Tray icon**: left click opens the **Now / Actions** popover (health, running timers, world clocks, favorites you choose, every action in groups; also `menew popover`). The menu has Open Menew, Open palette, Clipboard history, Clear history (keeps pinned entries), Pause, Paste next, Start at login, Quit.
+- **The Menew window**: Clipboard, Notes, Performance and Settings in a sidebar. **Settings** has the language (or the system's), start at login, turning the clipboard, quick actions or notes off completely (with the clipboard off Menew doesn't read it), clipboard limits and ignored apps, world clocks, focus options (mute the mic, keep awake, pause the clipboard), the never-quit list and every shortcut with its `menew run` command. A **welcome tour** on the first launch.
+- **Updates**: an opt-in daily check of this repo's GitHub releases (off until you turn it on).
 - **Start at login** is opt-in (off by default): it creates `~/.config/autostart/menew.desktop`, and unchecking it in the tray removes the file again.
-- UI in English, Portuguese, German, Spanish and Chinese (from `LC_ALL` / `LANG`).
+- UI in English, Portuguese, German, Spanish and Chinese (the system's, or picked in Settings).
 
 ## Principles
 
-- **Zero telemetry, zero analytics**: Menew makes no network request you did not ask for. The only one is the currency rate (see Privacy).
+- **Zero telemetry, zero analytics**: Menew makes no network request you did not ask for: the currency rate when you press Enter, and the update check if you turn it on (see Privacy).
 - **Minimal dependencies**: Built directly on Rust, GTK4, Libadwaita, and system D-Bus protocols.
 - **Wayland-first**: Designed for modern Wayland compositors (GNOME Mutter and KDE KWin).
 - **Fully translatable**: UI strings support en, pt, de, es, zh.
@@ -50,6 +57,10 @@ Linux port of [Menew for macOS](https://github.com/Quost/menew), in progress.
 - "Clear history" in the tray deletes every unpinned entry and the image files that go with them.
 - Images and files copied are stored locally (images in `~/.local/share/menew/clipboard/`). A copy marked as a password is never read, whatever it holds (text, image or files), and while the capture is paused the clipboard is not read at all. Reading the text of images runs `tesseract` locally; nothing is uploaded.
 - The optional paste simulation only writes a Ctrl+V key press to `/dev/uinput`; it never reads keyboard input.
+- Notes are stored in `~/.local/share/menew/notes.json`; protected and password notes keep their text in the system keyring (Secret Service), never in that file.
+- Screenshots go through the desktop's portal, which asks you first; Menew never reads the screen by itself. The capture used to read text or a QR code is deleted right after.
+- The system monitor reads `/proc` and `/sys`; nothing is kept on disk.
+- The update check, when you turn it on, makes one HTTPS GET a day to `api.github.com/repos/Quost/menew-linux/releases/latest` with the system `curl`, and sends nothing else.
 
 ## Architecture
 
@@ -57,11 +68,12 @@ The project is structured as a modular Cargo workspace:
 
 - `menew`: Main application binary and coordinator.
 - `menew-core`: Pure Rust business logic (the palette engine and one module per Mac file: calculator, conversions, currency, time zones, text transforms, quick links, emoji, timers, focus, script commands, recents), `.desktop` application scanner, SQLite storage (`rusqlite`), and i18n localization engine. Its palette behaviour is specified by `docs/palette-spec.md`, whose test vectors are run by the tests.
-- `menew-ui`: Command palette window built with GTK4 and Libadwaita.
+- `menew-ui`: GTK4 and Libadwaita windows: the palette, the Menew window (notes, performance, settings), the tray popover, the screenshot editor and the welcome tour.
+- `menew-desktop`: Screenshot and color picker portals (`ashpd`) and window snapping (KWin scripting over D-Bus, or the GNOME extension's `org.menew.Shell`).
 - `menew-tray`: System tray integration via StatusNotifierItem (`ksni`).
 - `menew-shortcuts`: Global shortcut listener using `org.freedesktop.portal.GlobalShortcuts` (`ashpd`).
 - `menew-clipboard`: Clipboard history manager supporting KDE Wayland data-control and GNOME D-Bus extension bridge.
-- `gnome-extension`: Lightweight GNOME Shell extension bridging Wayland clipboard events to the Menew daemon.
+- `gnome-extension`: Lightweight GNOME Shell extension bridging Wayland clipboard events to the Menew daemon and moving the front window when asked.
 
 ## Install
 
@@ -79,7 +91,12 @@ menew --version   # prints the version
 menew             # starts hidden in the tray; open the palette with Ctrl+Alt+Space
 ```
 
-`wl-clipboard` is recommended (used for clipboard history on KDE).
+Recommended packages, all optional (the feature that needs one says so when it is missing):
+`wl-clipboard` (clipboard history on KDE), `tesseract-ocr` (text in images and on the screen),
+`libsecret-tools` (protected and password notes), `pulseaudio-utils` (mute and audio devices; works
+with PipeWire), `udisks2` (eject), `ddcutil` (brightness of external displays), `zbar-tools` and
+`qrencode` (QR codes). The .deb also installs a polkit policy so opening a protected note asks for
+your password.
 
 ### AppImage (any x86_64 distro)
 
@@ -88,7 +105,7 @@ chmod +x Menew-<version>-x86_64.AppImage
 ./Menew-<version>-x86_64.AppImage
 ```
 
-GTK4 and libadwaita are bundled. If you enable "Start at login" in the tray, the autostart entry points at the AppImage file, so keep it where it is. The AppImage does not install the GNOME extension (see below).
+GTK4 and libadwaita are bundled. If you enable "Start at login" in the tray, the autostart entry points at the AppImage file, so keep it where it is. The AppImage does not install the GNOME extension (see below) or the polkit policy (protected notes then rely on the keyring's own lock).
 
 ### GNOME: clipboard extension and tray icon
 
@@ -143,6 +160,8 @@ menew            # first launch: start the daemon hidden (tray only), e.g. for a
                  # If already running, shows the palette.
 menew toggle     # show/hide the palette (bind this to a custom system shortcut on GNOME 45-47)
 menew clipboard  # open the palette in clipboard mode (bind this to Ctrl+Alt+V on GNOME 45-47)
+menew popover    # the Now / Actions window of the tray icon
+menew run <id>   # run any action: qa.mic, qa.dark, cap.area, cap.ocr, win.left, note.new, open.settings...
 menew quit       # quit the running daemon
 ```
 
@@ -161,13 +180,21 @@ The palette also opens from the global shortcuts or the tray menu.
 | Clipboard mode | `Ctrl+K` | actions of the selected entry (also right click) |
 | Clipboard mode | `Alt+Left` / `Alt+Right` | previous or next filter |
 | Global (GlobalShortcuts portal) | `Ctrl+Alt+N` | paste the next item of the paste queue (`menew paste-next`) |
+| Global (GlobalShortcuts portal) | `Ctrl+Alt+M` | mute or unmute the microphone (`menew run qa.mic`) |
+| Global (GlobalShortcuts portal) | `Ctrl+Alt+S` | capture an area of the screen (`menew run cap.area`) |
+| Global (GlobalShortcuts portal) | `Ctrl+Alt+O` | copy text from the screen (`menew run cap.ocr`) |
+| Global (GlobalShortcuts portal) | `Ctrl+Alt+Shift+Arrows`, `Ctrl+Alt+Enter` | window halves, fill the screen (`menew run win.left`...) |
+| Global (GlobalShortcuts portal) | `Ctrl+Alt+J` | new note (`menew run note.new`) |
 
-The portal is available on KDE Plasma and GNOME 48+. On GNOME 45-47 create two custom shortcuts in
-Settings (Keyboard, Custom Shortcuts) that run `menew toggle` and `menew clipboard`.
+The portal is available on KDE Plasma and GNOME 48+. On GNOME 45-47 create custom shortcuts in
+Settings (Keyboard, Custom Shortcuts) that run `menew toggle`, `menew clipboard` and the
+`menew run` commands listed in Menew's Settings.
 
 ### Configuration
 
 `~/.config/menew/config.json` (optional; defaults are used when it is missing or invalid):
+
+Most of it is edited in Settings; quick links and a few more keys only in the file.
 
 ```json
 { "paste_mode": "auto" }
@@ -188,6 +215,9 @@ bash scripts/desktop-test/kde.sh
 
 See `scripts/desktop-test/README.md` for packages, what is real vs substituted, and screenshots.
 Screenshots with fake data are in `docs/desktop-tests/` (`*-palette.png`, `*-clipboard.png`).
+The release 1 checks (notes, performance, settings, popover, editor, QR, dark mode, keep awake,
+window snapping on both desktops) run with `EXPLORE_CMD`, and everything runs from macOS or Windows
+in the Docker image of `scripts/dev/`.
 
 ## License
 
