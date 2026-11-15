@@ -21,6 +21,8 @@ pub struct PaletteState {
     pub clocks: Vec<Zone>,
     pub snippets: SnippetStore,
     pub queue: PasteQueue,
+    /// What a focus session turns on and off (set by the daemon: mute, keep awake, pause clipboard).
+    pub focus_hooks: Box<dyn menew_core::focus::FocusHooks>,
 }
 
 impl PaletteState {
@@ -34,6 +36,7 @@ impl PaletteState {
             clocks,
             snippets: SnippetStore::load_default(menew_core::current_language()),
             queue: PasteQueue::default(),
+            focus_hooks: Box::new(menew_core::focus::NoHooks),
         }
     }
 }
@@ -102,7 +105,7 @@ pub mod palette {
     use menew_core::clip_item::{self, collapsed_preview, row_title, text_stats, ClipFilter};
     use menew_core::clip_policy::{self, own_key, PauseState};
     use menew_core::clip_smart::{self, SmartRun};
-    use menew_core::focus::{NoHooks, EXTEND_MINUTES};
+    use menew_core::focus::EXTEND_MINUTES;
     use menew_core::paste_queue::QueueEntry;
     use menew_core::snippets::{self, Snippet};
     use menew_core::{ClipKind, Config};
@@ -1415,12 +1418,19 @@ pub mod palette {
                     }
                 }
                 ItemAction::FocusStart(minutes) => {
-                    self.state.borrow_mut().focus.start(minutes, now_secs(), &mut NoHooks);
+                    {
+                        let st = &mut *self.state.borrow_mut();
+                        st.focus.start(minutes, now_secs(), st.focus_hooks.as_mut());
+                    }
                     self.notify("menew-focus", &tr("toast_focus_started", lang, &[&minutes.to_string()]), None);
                     self.state_changed();
                 }
                 ItemAction::FocusStop => {
-                    if self.state.borrow_mut().focus.stop(&mut NoHooks) {
+                    let stopped = {
+                        let st = &mut *self.state.borrow_mut();
+                        st.focus.stop(st.focus_hooks.as_mut())
+                    };
+                    if stopped {
                         self.notify("menew-focus", &tr("focus_stopped", lang, &[]), None);
                         self.state_changed();
                     }

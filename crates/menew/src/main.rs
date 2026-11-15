@@ -7,6 +7,8 @@ mod capture;
 #[cfg(target_os = "linux")]
 mod commands;
 #[cfg(target_os = "linux")]
+mod focus_hooks;
+#[cfg(target_os = "linux")]
 mod monitor;
 #[cfg(target_os = "linux")]
 mod shell;
@@ -301,6 +303,21 @@ fn run_gtk_app(args: Vec<String>) {
         let cmds = commands::Commands::new(Rc::clone(&palette), Arc::clone(&rt_startup));
         *c_startup.borrow_mut() = Some(Rc::clone(&cmds));
         cmds.set_on_change(Rc::clone(&push_status));
+        {
+            let (s1, s2, s3, c1, c2) = (Arc::clone(&clipboard_service), Arc::clone(&clipboard_service), Arc::clone(&clipboard_service), Rc::clone(&control), Rc::clone(&control));
+            state.borrow_mut().focus_hooks = Box::new(focus_hooks::DaemonFocusHooks::new(
+                Rc::clone(&cmds),
+                Rc::new(move |m| {
+                    s1.pause(m);
+                    c1.borrow_mut().sync();
+                }),
+                Rc::new(move || {
+                    s2.resume();
+                    c2.borrow_mut().sync();
+                }),
+                Rc::new(move || s3.is_paused()),
+            ));
+        }
         let sampler = monitor::Sampler::new(&cmds, Rc::clone(&push_status), Rc::clone(&metrics_text));
         let perf_view = Rc::clone(&sampler.view);
         let perf: app_window::SectionFactory = Box::new(move || menew_ui::window::Section {

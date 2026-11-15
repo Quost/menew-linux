@@ -5,7 +5,7 @@
 use gtk4::gio;
 use gtk4::prelude::*;
 use libadwaita as adw;
-use menew_core::focus::{FocusEvent, NoHooks};
+use menew_core::focus::FocusEvent;
 use menew_core::strings::tr;
 use menew_core::time_zones::{TzCtx, Zone};
 use menew_core::timers::{clock, segment_text};
@@ -56,7 +56,8 @@ pub fn tick(app: &adw::Application, state: &mut PaletteState, now: f64, lang: La
         notify(app, &format!("timer-{}", c.id), &title, &body);
         play_sound();
     }
-    if let Some(ev) = state.focus.tick(now, &mut NoHooks) {
+    let hooks = state.focus_hooks.as_mut();
+    if let Some(ev) = state.focus.tick(now, hooks) {
         changed = true;
         match ev {
             FocusEvent::FocusFinished { rest_minutes } => {

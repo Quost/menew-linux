@@ -211,6 +211,18 @@ impl SettingsView {
             c.borrow_mut().focus_breaks = on;
             save(&c, &h);
         });
+        for (key, get, set) in [
+            ("set_focus_mute", (|c: &Config| c.focus_mute_mic) as fn(&Config) -> bool, (|c: &mut Config, v| c.focus_mute_mic = v) as fn(&mut Config, bool)),
+            ("set_focus_awake", |c: &Config| c.focus_keep_awake, |c: &mut Config, v| c.focus_keep_awake = v),
+            ("set_focus_pause", |c: &Config| c.focus_pause_clipboard, |c: &mut Config, v| c.focus_pause_clipboard = v),
+        ] {
+            let (c, h) = (Rc::clone(&cfg), Rc::clone(&hooks));
+            let on = get(&cfg.borrow());
+            switch(&g, &tr(key, lang, &[]), None, on, move |v| {
+                set(&mut c.borrow_mut(), v);
+                save(&c, &h);
+            });
+        }
         let never = adw::EntryRow::builder().title(tr("set_never_quit", lang, &[])).text(cfg.borrow().never_quit.join(", ")).show_apply_button(true).build();
         let (c, h) = (Rc::clone(&cfg), Rc::clone(&hooks));
         never.connect_apply(move |e| {

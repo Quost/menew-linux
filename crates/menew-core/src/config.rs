@@ -38,6 +38,11 @@ pub struct Config {
     pub clipboard_auto_delete_days: u32,
     /// Read the text of copied images with tesseract (`clipboardOCR`, on by default).
     pub clipboard_ocr: bool,
+    /// While focusing: mute the microphone (off), keep the computer awake (on), pause the
+    /// clipboard (off), like the Mac's defaults.
+    pub focus_mute_mic: bool,
+    pub focus_keep_awake: bool,
+    pub focus_pause_clipboard: bool,
     /// Apps "Quit all apps" never closes (`neverQuit` on the Mac): desktop ids or program names.
     pub never_quit: Vec<String>,
     /// Metrics shown next to the tray icon (`menuBarMetrics`): see `sysmon::TRAY_METRICS`.
@@ -85,6 +90,9 @@ impl Default for Config {
             clipboard_max_items: crate::clip_item::DEFAULT_MAX_ITEMS,
             clipboard_auto_delete_days: 0,
             clipboard_ocr: true,
+            focus_mute_mic: false,
+            focus_keep_awake: true,
+            focus_pause_clipboard: false,
             never_quit: vec![],
             tray_metrics: vec![],
             module_clipboard: true,

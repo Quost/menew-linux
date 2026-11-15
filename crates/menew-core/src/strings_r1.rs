@@ -271,4 +271,7 @@ pub(crate) static TABLE: &[(&str, [&str; 5])] = &[
     ("wel_start", ["Start using Menew", "Começar a usar", "Loslegen", "Empezar", "开始使用"]),
     ("wel_next", ["Next", "Próximo", "Weiter", "Siguiente", "下一步"]),
     ("shortcut_palette_r1", ["Open the command palette", "Abrir a paleta de comandos", "Befehlspalette öffnen", "Abrir la paleta de comandos", "打开命令面板"]),
+    ("set_focus_mute", ["Mute the microphone while focusing", "Mutar o microfone durante o foco", "Mikrofon während des Fokus stummschalten", "Silenciar el micrófono durante la concentración", "专注时将麦克风静音"]),
+    ("set_focus_awake", ["Keep the computer awake while focusing", "Manter o computador acordado durante o foco", "Computer während des Fokus wach halten", "Mantener el ordenador despierto durante la concentración", "专注时保持电脑唤醒"]),
+    ("set_focus_pause", ["Pause the clipboard while focusing", "Pausar o clipboard durante o foco", "Zwischenablage während des Fokus pausieren", "Pausar el portapapeles durante la concentración", "专注时暂停剪贴板"]),
 ];

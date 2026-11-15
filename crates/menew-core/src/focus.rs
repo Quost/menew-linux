@@ -2,9 +2,9 @@
 //! +5 minutes, stop, and a 5 minute break at the end. Pure state: the daemon ticks it and shows the
 //! time left in the tray and the notification at the end.
 //!
-//! The Mac app can also mute the microphone, keep the computer awake and pause the clipboard while
-//! a focus runs. Those options depend on the quick actions (Phase 9) and the clipboard pause
-//! (Phase 5), so they are left as the [`FocusHooks`] trait: the daemon passes [`NoHooks`] today.
+//! Like the Mac, a focus can also mute the microphone, keep the computer awake and pause the
+//! clipboard while it runs: the daemon does those through the [`FocusHooks`] trait
+//! (`crates/menew/src/focus_hooks.rs`), following the Settings.
 
 use crate::i18n::Language;
 use crate::strings::tr;
@@ -31,7 +31,7 @@ pub trait FocusHooks {
     fn ended(&mut self);
 }
 
-/// Does nothing: the options that need them are not on Linux yet (see `docs/parity.md`).
+/// Does nothing (tests, and before the daemon sets its own hooks).
 pub struct NoHooks;
 
 impl FocusHooks for NoHooks {
