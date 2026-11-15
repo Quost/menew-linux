@@ -38,7 +38,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libdbus-1-dev pkg-config build-essential \
             gnome-shell mutter kwin-wayland kde-spectacle qtwayland5 wl-clipboard sqlite3 dbus-user-session \
             xdg-desktop-portal xdg-desktop-portal-gtk python3-gi gir1.2-gtk-4.0 psmisc procps \
-            imagemagick dbus-bin dbus-x11 libglib2.0-bin
+            imagemagick dbus-bin dbus-x11 libglib2.0-bin \
+            qrencode zbar-tools tesseract-ocr libsecret-tools pulseaudio-utils
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - run: cargo build
@@ -46,6 +47,10 @@ jobs:
         run: MENEW_BIN="$PWD/target/debug/menew" bash scripts/desktop-test/gnome.sh
       - name: KDE
         run: MENEW_BIN="$PWD/target/debug/menew" bash scripts/desktop-test/kde.sh
+      - name: GNOME release 1 checks
+        run: MENEW_BIN="$PWD/target/debug/menew" EXPLORE_CMD='bash scripts/desktop-test/r1-checks.sh' bash scripts/desktop-test/gnome.sh
+      - name: KDE release 1 checks
+        run: MENEW_BIN="$PWD/target/debug/menew" EXPLORE_CMD='bash scripts/desktop-test/r1-kde-checks.sh' bash scripts/desktop-test/kde.sh
       - uses: actions/upload-artifact@v5
         if: always()
         with:

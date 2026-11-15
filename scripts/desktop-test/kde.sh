@@ -86,7 +86,8 @@ else
 fi
 sleep 2
 
-if [ -n "${EXPLORE_CMD:-}" ]; then bash -c "$EXPLORE_CMD" || true; exit 0; fi
+export KWIN_LOG
+if [ -n "${EXPLORE_CMD:-}" ]; then bash -c "$EXPLORE_CMD"; exit $?; fi
 
 # Readiness probe for the real pipeline wl-copy -> wl-paste --watch -> helper -> daemon -> SQLite.
 # The copy is retried: on a slow runner the compositor/watcher may still be starting when the first

@@ -14,5 +14,9 @@ rc=0
 for de in ${1:-gnome kde}; do
     echo "===== $de"
     timeout 600 bash "scripts/desktop-test/$de.sh" || rc=1
+    echo "===== $de release 1"
+    checks="scripts/desktop-test/r1-checks.sh"
+    [ "$de" = kde ] && checks="scripts/desktop-test/r1-kde-checks.sh"
+    EXPLORE_CMD="bash $checks" timeout 600 bash "scripts/desktop-test/$de.sh" || rc=1
 done
 exit $rc

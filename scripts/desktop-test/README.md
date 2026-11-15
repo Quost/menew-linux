@@ -12,6 +12,33 @@ bash scripts/desktop-test/gnome.sh            # headless GNOME Shell + the bridg
 bash scripts/desktop-test/kde.sh              # headless KWin + wl-paste watcher
 ```
 
+Release 1 checks run inside the same sessions (`EXPLORE_CMD` runs a script in the live session and
+passes on its exit status):
+
+```bash
+EXPLORE_CMD='bash scripts/desktop-test/r1-checks.sh' bash scripts/desktop-test/gnome.sh
+EXPLORE_CMD='bash scripts/desktop-test/r1-kde-checks.sh' bash scripts/desktop-test/kde.sh
+```
+
+GNOME: notes (written to `notes.json` while running, found in the palette), the Performance and
+Settings sections, the tray popover (`menew popover`), the screenshot editor on a generated image,
+a QR code window, `awake 2h` in the palette, dark mode through `gsettings`, keep awake, and a GTK
+window snapped to the left half through the extension's `org.menew.Shell` (geometry read back from
+the shell). KDE: a window snapped to the right half through a KWin script, geometry read back with
+a second KWin script. Screenshots go to `docs/desktop-tests/gnome-r1-*.png` (not committed).
+
+From macOS or Windows, everything runs in the Linux dev image (`scripts/dev/Dockerfile`):
+
+```bash
+docker build -t menew-dev scripts/dev
+bash scripts/dev/run.sh "cargo test --workspace"
+bash scripts/dev/run.sh "bash scripts/dev/desktop-tests.sh"   # GNOME and KDE, plus release 1
+```
+
+In a container there is no logind: the script removes `/run/systemd/seats` so GNOME Shell uses its
+dummy login manager, starts a system bus, and drops `cap_sys_nice` from `kwin_wayland`. Keep awake
+therefore reports that `systemd-inhibit` cannot work there, which the check accepts.
+
 Screenshots land in `docs/desktop-tests/`: `gnome-palette.png`, `kde-palette.png` (Apps mode),
 `gnome-clipboard.png`, `kde-clipboard.png` (clipboard mode, fake data only) and
 `<de>-palette-units.png`, `<de>-palette-emoji.png` (the palette with `5 km to mi` and `emoji rocket`).
