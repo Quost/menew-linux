@@ -33,10 +33,11 @@ Native Linux productivity utility built in Rust (GTK4 + Libadwaita). Separate re
 ## Workspace Structure
 
 - `crates/menew-core`: Pure Rust core logic, desktop entry scanner, inline math evaluator, SQLite storage, i18n dictionary.
-- `crates/menew-ui`: Command palette window and widgets using GTK4 and Libadwaita.
+- `crates/menew-ui`: GTK4 / Libadwaita windows: palette, Menew window (notes, performance, settings), tray popover, screenshot editor, welcome tour.
 - `crates/menew-tray`: System tray implementation with `ksni`.
 - `crates/menew-shortcuts`: Global shortcut listener with `ashpd`.
 - `crates/menew-clipboard`: Clipboard service and data-control/D-Bus listeners.
+- `crates/menew-desktop`: Screenshot and color picker portals, window snapping (KWin scripting, GNOME extension `org.menew.Shell`).
 - `crates/menew`: Main coordinator daemon and entry point.
 - `gnome-extension`: GNOME Shell extension for clipboard bridging on GNOME Wayland.
 - `docs/`: Technical findings and architecture specifications.
@@ -48,3 +49,7 @@ cargo check
 cargo test
 cargo clippy
 ```
+
+From macOS or Windows, run them (and the headless GNOME/KDE tests) in the Linux dev image:
+`docker build -t menew-dev scripts/dev`, then `bash scripts/dev/run.sh "cargo test --workspace"` and
+`bash scripts/dev/run.sh "bash scripts/dev/desktop-tests.sh"`.
