@@ -7,6 +7,8 @@ mod capture;
 #[cfg(target_os = "linux")]
 mod commands;
 #[cfg(target_os = "linux")]
+mod monitor;
+#[cfg(target_os = "linux")]
 use std::cell::RefCell;
 #[cfg(target_os = "linux")]
 use std::rc::Rc;
@@ -244,14 +246,17 @@ fn run_gtk_app(args: Vec<String>) {
         let (status_tx, status_rx) = mpsc::unbounded_channel::<TrayStatus>();
         // pushes the countdown to the tray whenever it changes
         let last_status = Rc::new(RefCell::new(TrayStatus::default()));
+        let metrics_text = Rc::new(RefCell::new(String::new()));
         let push_status: Rc<dyn Fn()> = {
             let state = Rc::clone(&state);
             let last = Rc::clone(&last_status);
             let tx = status_tx.clone();
             let svc = Arc::clone(&clipboard_service);
+            let metrics = Rc::clone(&metrics_text);
             Rc::new(move || {
                 let mut status = alerts::tray_status(&state.borrow(), alerts::now(), menew_core::current_language());
                 status.paused = svc.is_paused();
+                status.metrics = metrics.borrow().clone();
                 if *last.borrow() != status {
                     info!("Tray status: {:?} {:?}", status.title(), status.lines);
                     *last.borrow_mut() = status.clone();
@@ -286,7 +291,22 @@ fn run_gtk_app(args: Vec<String>) {
         *p_startup.borrow_mut() = Some(Rc::clone(&palette));
         let cmds = commands::Commands::new(Rc::clone(&palette), Arc::clone(&rt_startup));
         *c_startup.borrow_mut() = Some(Rc::clone(&cmds));
-        let _shell = app_window::setup(application, &cmds, &palette, vec![], vec![]);
+        cmds.set_on_change(Rc::clone(&push_status));
+        let sampler = monitor::Sampler::new(&cmds, Rc::clone(&push_status), Rc::clone(&metrics_text));
+        let perf_view = Rc::clone(&sampler.view);
+        let perf: app_window::SectionFactory = Box::new(move || menew_ui::window::Section {
+            id: "performance",
+            title: menew_core::strings::tr("mon_open", menew_core::current_language(), &[]),
+            icon: "utilities-system-monitor-symbolic",
+            page: perf_view.root.clone(),
+            header: vec![],
+            on_show: None,
+        });
+        let shell = app_window::setup(application, &cmds, &palette, vec![], vec![perf]);
+        {
+            let w = Rc::clone(&shell.window);
+            *sampler.detail_check.borrow_mut() = Some(Rc::new(move || w.visible_section().as_deref() == Some("performance")));
+        }
         capture::setup(application, &cmds, &palette, Arc::clone(&rt_startup));
         let db_tray = db.clone();
 
@@ -377,6 +397,7 @@ fn run_gtk_app(args: Vec<String>) {
 
         // 8. Connect channel receivers into GLib main context
         let p_tray = Rc::clone(&palette);
+        let tray_shell = Rc::clone(&shell);
         let tray_svc = Arc::clone(&clipboard_service);
         let tray_ctl = Rc::clone(&control);
         let app_handle = application.clone();
@@ -399,6 +420,8 @@ fn run_gtk_app(args: Vec<String>) {
                         p_tray.queue_changed();
                     }
                     TrayCommand::PasteNext => p_tray.paste_next(),
+                    TrayCommand::OpenWindow => tray_shell.window.present(),
+                    TrayCommand::Activate => tray_shell.window.present(),
                     TrayCommand::Quit => app_handle.quit(),
                 }
             }

@@ -188,4 +188,5 @@ pub(crate) static TABLE: &[(&str, [&str; 5])] = &[
     ("ann_add", ["Add", "Colocar", "Hinzufügen", "Añadir", "添加"]),
     ("ann_drag_hint", ["Drag the image into any app", "Arraste a imagem para qualquer app", "Zieh das Bild in eine App", "Arrastra la imagen a cualquier app", "将图片拖到任意应用"]),
     ("ann_copy_text", ["Copy text", "Copiar texto", "Text kopieren", "Copiar texto", "复制文字"]),
+    ("tray_open_window", ["Open Menew", "Abrir o Menew", "Menew öffnen", "Abrir Menew", "打开 Menew"]),
 ];

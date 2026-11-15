@@ -76,6 +76,8 @@ pub mod annotate;
 #[cfg(target_os = "linux")]
 pub mod dialogs;
 #[cfg(target_os = "linux")]
+pub mod monitor;
+#[cfg(target_os = "linux")]
 pub mod notes;
 #[cfg(target_os = "linux")]
 pub mod window;

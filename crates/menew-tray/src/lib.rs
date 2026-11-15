@@ -11,6 +11,10 @@ pub enum TrayCommand {
     TogglePause,
     /// Paste the next item of the paste queue.
     PasteNext,
+    /// Left click on the icon: the Now / Actions popover.
+    Activate,
+    /// The Menew window.
+    OpenWindow,
     Quit,
 }
 
@@ -26,15 +30,18 @@ pub struct TrayStatus {
     pub paused: bool,
     /// Items waiting in the paste queue (0 also when the queue is off).
     pub queue: usize,
+    /// The metrics chosen for the tray ("CPU 12% · RAM 45%"), empty when none.
+    pub metrics: String,
 }
 
 impl TrayStatus {
     /// The `Title` property: "Menew" when idle, "Menew · FOCUS 24m" while something runs.
     pub fn title(&self) -> String {
-        if self.summary.is_empty() {
+        let parts: Vec<&str> = [self.summary.as_str(), self.metrics.as_str()].into_iter().filter(|s| !s.is_empty()).collect();
+        if parts.is_empty() {
             "Menew".to_string()
         } else {
-            format!("Menew \u{b7} {}", self.summary)
+            format!("Menew \u{b7} {}", parts.join(" \u{b7} "))
         }
     }
 }
@@ -68,12 +75,18 @@ mod linux_impl {
             }
         }
 
+        fn activate(&mut self, _x: i32, _y: i32) {
+            info!("Tray: activated (left click)");
+            let _ = self.tx.send(TrayCommand::Activate);
+        }
+
         fn icon_name(&self) -> String {
             // Prefer custom app icon if installed in hicolor, fallback to standard symbolic
             "menew-symbolic".to_string()
         }
 
         fn menu(&self) -> Vec<MenuItem<Self>> {
+            let tx_window = self.tx.clone();
             let tx_open = self.tx.clone();
             let tx_clip = self.tx.clone();
             let tx_clear = self.tx.clone();
@@ -82,6 +95,14 @@ mod linux_impl {
             let tx_quit = self.tx.clone();
 
             vec![
+                StandardItem {
+                    label: menew_core::strings::tr("tray_open_window", menew_core::current_language(), &[]),
+                    activate: Box::new(move |_| {
+                        let _ = tx_window.send(TrayCommand::OpenWindow);
+                    }),
+                    ..Default::default()
+                }
+                .into(),
                 StandardItem {
                     label: menew_core::t("tray_open_palette").to_string(),
                     activate: Box::new(move |_| {
