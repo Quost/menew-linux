@@ -294,7 +294,14 @@ impl NotesView {
 
     /// Reload from disk (another window or the palette may have changed it).
     pub fn refresh(self: &Rc<Self>) {
+        self.flush_save();
+        self.store.borrow_mut().reload();
         self.reload_list();
+        let sel = self.selected.borrow().clone();
+        match sel {
+            Some(id) if self.store.borrow().note(&id).is_some() => self.show_selected(),
+            _ => self.select_first(),
+        }
     }
 
     pub fn new_note(self: &Rc<Self>, passwords: bool) {

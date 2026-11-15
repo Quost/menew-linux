@@ -238,6 +238,8 @@ pub struct ClipContext<'a> {
     pub paused: bool,
     pub queue_on: bool,
     pub queue_len: usize,
+    /// The clipboard feature is turned off in Settings: no clipboard items at all.
+    pub disabled: bool,
 }
 
 
@@ -299,7 +301,8 @@ pub fn results(ctx: &PaletteContext, raw: &str, clip_search: &dyn Fn(&str) -> Ve
         pool.extend(transform_items(text, &q, lang));
         pool.extend(smart_items(text, ctx));
     }
-    for hit in clip_search(raw).into_iter().take(6) {
+    let hits = if ctx.clip.disabled { vec![] } else { clip_search(raw) };
+    for hit in hits.into_iter().take(6) {
         let (icon, action) = match hit.kind {
             ClipKind::Text => ("edit-paste-symbolic", ItemAction::PasteClip(hit.text)),
             ClipKind::Image => ("image-x-generic-symbolic", ItemAction::PasteEntry(hit.id)),
@@ -372,8 +375,16 @@ fn tips(lang: Language) -> Vec<PaletteItem> {
 
 /// Everything that can run now: the Menew actions and the installed apps.
 fn commands(ctx: &PaletteContext) -> Vec<PaletteItem> {
-    let lang = ctx.lang;
     let mut out = vec![];
+    if !ctx.clip.disabled {
+        clipboard_commands(ctx, &mut out);
+    }
+    other_commands(ctx, &mut out);
+    out
+}
+
+fn clipboard_commands(ctx: &PaletteContext, out: &mut Vec<PaletteItem>) {
+    let lang = ctx.lang;
     out.push(
         PaletteItem::new("action.clipboard", Kind::Action, &tr("act_clipboard", lang, &[]))
             .subtitle(&tr("act_sub_clipboard", lang, &[]))
@@ -432,6 +443,10 @@ fn commands(ctx: &PaletteContext) -> Vec<PaletteItem> {
                 .act(ItemAction::PasteSnippet(s.id.clone())),
         );
     }
+}
+
+fn other_commands(ctx: &PaletteContext, out: &mut Vec<PaletteItem>) {
+    let lang = ctx.lang;
     out.push(
         PaletteItem::new(
             "action.autostart",
@@ -496,7 +511,6 @@ fn commands(ctx: &PaletteContext) -> Vec<PaletteItem> {
         }
         out.push(it);
     }
-    out
 }
 
 /// "focus 50": the Mac's "foco 50" with a number.

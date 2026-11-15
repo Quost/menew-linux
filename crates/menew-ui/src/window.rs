@@ -117,6 +117,14 @@ impl MenewWindow {
         self.present();
     }
 
+    /// Show or hide a section in the sidebar (a feature turned off).
+    pub fn set_section_visible(&self, id: &str, visible: bool) {
+        let idx = self.sections.borrow().iter().position(|s| s.id == id);
+        if let Some(r) = idx.and_then(|i| self.list.row_at_index(i as i32)) {
+            r.set_visible(visible);
+        }
+    }
+
     pub fn present(&self) {
         self.window.set_visible(true);
         self.window.present();

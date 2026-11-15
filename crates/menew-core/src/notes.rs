@@ -256,6 +256,16 @@ impl NotesStore {
         Self::open(Some(Self::default_path()), Box::new(SecretServiceVault))
     }
 
+    /// Read the file again when another process changed it (keeps what is unlocked).
+    pub fn reload(&mut self) {
+        let Some(p) = self.path.as_deref() else { return };
+        if let Some(notes) = std::fs::read_to_string(p).ok().and_then(|s| serde_json::from_str::<Vec<Note>>(&s).ok()) {
+            if notes != self.notes {
+                self.notes = notes;
+            }
+        }
+    }
+
     pub fn save(&self) {
         let Some(p) = &self.path else { return };
         if let Some(dir) = p.parent() {

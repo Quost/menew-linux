@@ -42,6 +42,36 @@ pub struct Config {
     pub never_quit: Vec<String>,
     /// Metrics shown next to the tray icon (`menuBarMetrics`): see `sysmon::TRAY_METRICS`.
     pub tray_metrics: Vec<String>,
+    /// The features that can be turned off completely (`Module` on the Mac). With the clipboard
+    /// off, Menew does not even read it.
+    pub module_clipboard: bool,
+    pub module_actions: bool,
+    pub module_notes: bool,
+    /// `system` or a language code (`en`, `pt`, `de`, `es`, `zh`).
+    pub language: String,
+    /// Command ids on top of the Actions tab, in order (`actionFavorites`).
+    pub favorites: Vec<String>,
+    /// Check GitHub releases once a day (off until turned on, in the welcome tour or settings).
+    pub update_check: bool,
+    /// Unix time of the last update check.
+    pub update_checked_at: u64,
+    /// The welcome tour was seen.
+    pub welcome_done: bool,
+}
+
+/// The Mac's default favorites, with the Linux command ids.
+pub fn default_favorites() -> Vec<String> {
+    ["qa.mic", "qa.awake", "qa.dark", "cap.area", "cap.ocr", "qa.color", "qa.lock", "qa.plain"].iter().map(|s| s.to_string()).collect()
+}
+
+impl Config {
+    /// The language to use: the picked one, or the system's.
+    pub fn effective_language(&self) -> crate::i18n::Language {
+        match self.language.as_str() {
+            "" | "system" => crate::i18n::Language::detect(),
+            code => crate::i18n::Language::from_code(code),
+        }
+    }
 }
 
 impl Default for Config {
@@ -57,6 +87,14 @@ impl Default for Config {
             clipboard_ocr: true,
             never_quit: vec![],
             tray_metrics: vec![],
+            module_clipboard: true,
+            module_actions: true,
+            module_notes: true,
+            language: "system".into(),
+            favorites: default_favorites(),
+            update_check: false,
+            update_checked_at: 0,
+            welcome_done: false,
         }
     }
 }

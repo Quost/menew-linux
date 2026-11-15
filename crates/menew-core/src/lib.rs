@@ -35,6 +35,7 @@ pub mod sysmon;
 pub mod text_transforms;
 pub mod time_zones;
 pub mod timers;
+pub mod updates;
 pub mod windows;
 
 pub use calculator::{evaluate, CalcResult};

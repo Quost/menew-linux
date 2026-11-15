@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnome-shell gnome-shell-extensions mutter kwin-wayland kde-spectacle qtwayland5 wl-clipboard \
     xdg-desktop-portal xdg-desktop-portal-gtk sqlite3 imagemagick dbus-user-session dbus-x11 dbus-bin \
     libglib2.0-bin python3-gi gir1.2-gtk-4.0 python3-yaml procps psmisc tesseract-ocr \
+    qrencode zbar-tools libsecret-tools pulseaudio-utils libcap2-bin \
     && rm -rf /var/lib/apt/lists/*
 RUN curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --component clippy
 ENV PATH=/root/.cargo/bin:$PATH CARGO_TARGET_DIR=/target

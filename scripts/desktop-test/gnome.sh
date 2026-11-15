@@ -51,6 +51,8 @@ trap cleanup EXIT
 bash -c "cd '$REPO_ROOT/gnome-extension' && ./install.sh" >/dev/null
 gsettings set org.gnome.shell enabled-extensions "['$UUID']"
 gsettings set org.gnome.shell disable-user-extensions false
+# Ubuntu's default icon theme (Yaru) is not installed in the test images
+gsettings set org.gnome.desktop.interface icon-theme Adwaita
 
 # start the headless shell (unsafe mode allows org.gnome.Shell.Screenshot)
 export XDG_SESSION_TYPE=wayland
@@ -117,7 +119,7 @@ fi
 sleep 2   # let the extension proxy reconnect
 
 # developer aid: EXPLORE_CMD='...' runs an arbitrary command in the live session and stops
-if [ -n "${EXPLORE_CMD:-}" ]; then bash -c "$EXPLORE_CMD" || true; exit 0; fi
+if [ -n "${EXPLORE_CMD:-}" ]; then bash -c "$EXPLORE_CMD"; exit $?; fi
 
 # Copies are made INSIDE the shell (org.gnome.Shell.Eval, unsafe mode) instead of with wl-copy:
 # wl-copy/wl-paste need keyboard focus for their helper surface, and a headless gnome-shell has

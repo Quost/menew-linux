@@ -9,6 +9,8 @@ mod commands;
 #[cfg(target_os = "linux")]
 mod monitor;
 #[cfg(target_os = "linux")]
+mod shell;
+#[cfg(target_os = "linux")]
 use std::cell::RefCell;
 #[cfg(target_os = "linux")]
 use std::rc::Rc;
@@ -27,7 +29,7 @@ use gtk4::prelude::*;
 use libadwaita as adw;
 
 use menew_clipboard::ClipboardService;
-use menew_core::{set_language, ClipboardDatabase, Language};
+use menew_core::{set_language, ClipboardDatabase};
 #[cfg(target_os = "linux")]
 use menew_core::PaletteMode;
 use menew_shortcuts::ShortcutEvent;
@@ -53,6 +55,8 @@ enum Action {
     PaletteActivate(usize),
     /// Paste the next item of the paste queue.
     PasteNext,
+    /// `menew popover`: the Now / Actions window of the tray icon.
+    Popover,
     /// `menew run <command>`: the same ids as the palette and the shortcuts (`qa.mic`, `win.left`...).
     Run(String),
     /// Test hook: show the clipboard list with this filter and search text, log it.
@@ -72,6 +76,9 @@ fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
         if let Some(c) = args.get(p + 1) {
             return Action::Run(c.clone());
         }
+    }
+    if args.iter().any(|a| a == "popover") {
+        return Action::Popover;
     }
     if args.iter().any(|a| a == "quit") {
         Action::Quit
@@ -141,7 +148,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     info!("Starting Menew Linux");
 
     // Language detection
-    let detected_lang = Language::detect();
+    let detected_lang = menew_core::Config::load().effective_language();
     set_language(detected_lang);
     info!("Language set to: {:?}", detected_lang);
 
@@ -215,6 +222,8 @@ fn run_gtk_app(args: Vec<String>) {
         Rc::new(RefCell::new(None));
 
     let commands_cell: Rc<RefCell<Option<Rc<commands::Commands>>>> = Rc::new(RefCell::new(None));
+    let popover_cell: Rc<RefCell<Option<Rc<menew_ui::popover::Popover>>>> = Rc::new(RefCell::new(None));
+    let pop_startup = Rc::clone(&popover_cell);
 
     // connect_startup is guaranteed to execute ONLY on the primary instance
     let c_startup = Rc::clone(&commands_cell);
@@ -297,15 +306,92 @@ fn run_gtk_app(args: Vec<String>) {
         let perf: app_window::SectionFactory = Box::new(move || menew_ui::window::Section {
             id: "performance",
             title: menew_core::strings::tr("mon_open", menew_core::current_language(), &[]),
-            icon: "utilities-system-monitor-symbolic",
+            icon: "computer-symbolic",
             page: perf_view.root.clone(),
             header: vec![],
             on_show: None,
         });
-        let shell = app_window::setup(application, &cmds, &palette, vec![], vec![perf]);
-        {
+        // features turned on or off, now and whenever the settings change
+        let clip_pause: Rc<dyn Fn(bool)> = {
+            let (svc, ctl) = (Arc::clone(&clipboard_service), Rc::clone(&control));
+            Rc::new(move |off: bool| {
+                if off {
+                    if !svc.is_paused() {
+                        svc.pause(None);
+                    }
+                } else {
+                    svc.resume();
+                }
+                ctl.borrow_mut().sync();
+            })
+        };
+        let shell_cell: Rc<RefCell<Option<Rc<app_window::AppWindow>>>> = Rc::new(RefCell::new(None));
+        let on_config: Rc<dyn Fn(&menew_core::Config)> = {
+            let (p, c, cp, sc) = (Rc::clone(&palette), Rc::clone(&cmds), Rc::clone(&clip_pause), Rc::clone(&shell_cell));
+            let was_clip = Rc::new(std::cell::Cell::new(menew_core::Config::load().module_clipboard));
+            Rc::new(move |cfg: &menew_core::Config| {
+                shell::apply_modules(cfg, &p, &c);
+                // the clipboard off is a pause until turned on again; turning it on resumes
+                if !cfg.module_clipboard {
+                    cp(true);
+                } else if !was_clip.get() {
+                    cp(false);
+                }
+                was_clip.set(cfg.module_clipboard);
+                if let Some(s) = sc.borrow().as_ref() {
+                    s.window.set_section_visible("notes", cfg.module_notes);
+                    s.window.set_section_visible("clipboard", cfg.module_clipboard);
+                }
+            })
+        };
+        let gnome_ext = (menew_core::sys::Desktop::detect() == menew_core::sys::Desktop::Gnome)
+            .then(|| rt_startup.block_on(menew_desktop::gnome_extension_running()));
+        let parts = shell::sections(application, &palette, &cmds, Rc::clone(&on_config), gnome_ext);
+        let (settings_sec, clip_sec) = (parts.settings, parts.clipboard);
+        let clip_f: app_window::SectionFactory = Box::new(move || clip_sec);
+        let set_f: app_window::SectionFactory = Box::new(move || settings_sec);
+        let shell = app_window::setup(application, &cmds, &palette, vec![clip_f], vec![perf, set_f]);
+        *shell_cell.borrow_mut() = Some(Rc::clone(&shell));
+        let popover = {
             let w = Rc::clone(&shell.window);
-            *sampler.detail_check.borrow_mut() = Some(Rc::new(move || w.visible_section().as_deref() == Some("performance")));
+            shell::popover(application, &cmds, &palette, &state, &sampler, Rc::new(move || w.present()))
+        };
+        *pop_startup.borrow_mut() = Some(Rc::clone(&popover));
+        {
+            let (w, pop) = (Rc::clone(&shell.window), Rc::clone(&popover));
+            *sampler.detail_check.borrow_mut() = Some(Rc::new(move || w.visible_section().as_deref() == Some("performance") || pop.is_visible()));
+        }
+        cmds.add_provider("always", Rc::new(|_raw, lang| {
+            vec![menew_core::palette::PaletteItem::new("action.settings", menew_core::palette::Kind::Action, &menew_core::strings::tr("set_open", lang, &[]))
+                .kw(&menew_core::strings::tr("set_open_kw", lang, &[]))
+                .icon(menew_core::palette::Icon::Symbol("emblem-system-symbolic"))
+                .act(menew_core::palette::ItemAction::Command("open.settings".into()))]
+        }));
+        on_config(&menew_core::Config::load());
+        // notifications can open the releases page
+        {
+            let a = gio::SimpleAction::new("open-uri", Some(glib::VariantTy::STRING));
+            a.connect_activate(|_, v| {
+                if let Some(u) = v.and_then(|v| v.get::<String>()) {
+                    let _ = gio::AppInfo::launch_default_for_uri(&u, gio::AppLaunchContext::NONE);
+                }
+            });
+            application.add_action(&a);
+        }
+        // the daily update check (only when turned on)
+        {
+            let app = application.clone();
+            glib::timeout_add_seconds_local_once(30, move || shell::check_updates(&app, false));
+            let app = application.clone();
+            glib::timeout_add_seconds_local(3600, move || {
+                shell::check_updates(&app, false);
+                glib::ControlFlow::Continue
+            });
+        }
+        // the welcome tour on the first launch (never in the test sessions)
+        if !menew_core::Config::load().welcome_done && std::env::var("MENEW_TEST").map(|v| v != "1").unwrap_or(true) {
+            let oc = Rc::clone(&on_config);
+            menew_ui::welcome::show(application, Rc::new(move |c| oc(c)));
         }
         capture::setup(application, &cmds, &palette, Arc::clone(&rt_startup));
         let db_tray = db.clone();
@@ -398,6 +484,7 @@ fn run_gtk_app(args: Vec<String>) {
         // 8. Connect channel receivers into GLib main context
         let p_tray = Rc::clone(&palette);
         let tray_shell = Rc::clone(&shell);
+        let tray_pop = Rc::clone(&popover);
         let tray_svc = Arc::clone(&clipboard_service);
         let tray_ctl = Rc::clone(&control);
         let app_handle = application.clone();
@@ -421,7 +508,7 @@ fn run_gtk_app(args: Vec<String>) {
                     }
                     TrayCommand::PasteNext => p_tray.paste_next(),
                     TrayCommand::OpenWindow => tray_shell.window.present(),
-                    TrayCommand::Activate => tray_shell.window.present(),
+                    TrayCommand::Activate => tray_pop.toggle(),
                     TrayCommand::Quit => app_handle.quit(),
                 }
             }
@@ -452,6 +539,7 @@ fn run_gtk_app(args: Vec<String>) {
     // connect_command_line handles first launch and remote IPC such as `menew toggle`
     let p_cmd = Rc::clone(&palette_cell);
     let c_cmd = Rc::clone(&commands_cell);
+    let pop_cmd = Rc::clone(&popover_cell);
     let app_cmd = app.clone();
     app.connect_command_line(move |_application, cmd_line| {
         let cmd_args: Vec<String> = cmd_line
@@ -475,6 +563,11 @@ fn run_gtk_app(args: Vec<String>) {
         match action {
             Action::Quit => app_cmd.quit(),
             Action::StayHidden => {}
+            Action::Popover => {
+                if let Some(p) = pop_cmd.borrow().as_ref() {
+                    p.toggle();
+                }
+            }
             Action::Run(c) => {
                 if let Some(cmds) = c_cmd.borrow().as_ref() {
                     cmds.run(&c);

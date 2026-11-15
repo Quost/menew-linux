@@ -31,7 +31,10 @@ pub struct Commands {
     desktop: Desktop,
     tools: RefCell<ToolState>,
     pub awake: RefCell<KeepAwake>,
-    providers: RefCell<Vec<Provider>>,
+    /// (feature, provider): `actions`, `notes` or `always`.
+    providers: RefCell<Vec<(&'static str, Provider)>>,
+    actions_on: std::cell::Cell<bool>,
+    notes_on: std::cell::Cell<bool>,
     runners: RefCell<Vec<Runner>>,
     /// Called after something the tray or the popover shows changed (keep awake, mute).
     on_change: RefCell<Option<Rc<dyn Fn()>>>,
@@ -50,6 +53,8 @@ impl Commands {
             tools: RefCell::new(ToolState::default()),
             awake: RefCell::new(KeepAwake::default()),
             providers: RefCell::new(vec![]),
+            actions_on: std::cell::Cell::new(true),
+            notes_on: std::cell::Cell::new(true),
             runners: RefCell::new(vec![]),
             on_change: RefCell::new(None),
         });
@@ -63,9 +68,16 @@ impl Commands {
         me
     }
 
-    pub fn add_provider(&self, p: Provider) {
-        self.providers.borrow_mut().push(p);
+    /// Items of a feature that can be turned off (`actions`, `notes`) or `always` shown.
+    pub fn add_provider(&self, feature: &'static str, p: Provider) {
+        self.providers.borrow_mut().push((feature, p));
     }
+
+    pub fn set_modules(&self, actions: bool, notes: bool) {
+        self.actions_on.set(actions);
+        self.notes_on.set(notes);
+    }
+
 
     pub fn add_runner(&self, r: Runner) {
         self.runners.borrow_mut().push(r);
@@ -82,9 +94,6 @@ impl Commands {
         }
     }
 
-    pub fn desktop(&self) -> Desktop {
-        self.desktop
-    }
 
     pub fn tools(&self) -> ToolState {
         let mut t = self.tools.borrow().clone();
@@ -112,16 +121,27 @@ impl Commands {
     /// The items for the text typed.
     pub fn items(&self, raw: &str) -> Vec<PaletteItem> {
         let lang = current_language();
-        let mut out = qa::items(&self.tools(), lang);
-        out.extend(menew_core::windows::items(lang));
+        let mut out = vec![];
+        let actions = self.actions_on.get();
+        if actions {
+            out.extend(qa::items(&self.tools(), lang));
+            out.extend(menew_core::windows::items(lang));
+        }
         let q = raw.trim();
-        if !q.is_empty() {
+        if actions && !q.is_empty() {
             let apps = self.palette.apps();
             let never = menew_core::Config::load().never_quit;
             out.extend(qa::typed_items(q, &|| qa::running_apps(&apps, &never), &qa::listening_ports, lang));
         }
-        for p in self.providers.borrow().iter() {
-            out.extend(p(raw, lang));
+        for (feature, p) in self.providers.borrow().iter() {
+            let on = match *feature {
+                "actions" => actions,
+                "notes" => self.notes_on.get(),
+                _ => true,
+            };
+            if on {
+                out.extend(p(raw, lang));
+            }
         }
         out
     }

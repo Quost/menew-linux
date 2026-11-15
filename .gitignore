@@ -11,3 +11,4 @@
 .relay/
 .relay-archive/
 dist/
+docs/desktop-tests/gnome-r1-*.png

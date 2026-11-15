@@ -187,7 +187,12 @@ impl KeepAwake {
             .stderr(Stdio::null())
             .spawn();
         match child {
-            Ok(c) => {
+            Ok(mut c) => {
+                // without logind it exits at once: give it a moment to fail
+                std::thread::sleep(std::time::Duration::from_millis(250));
+                if !matches!(c.try_wait(), Ok(None)) {
+                    return false;
+                }
                 self.child = Some(c);
                 self.until = minutes.map(|m| now + m as f64 * 60.0);
                 true

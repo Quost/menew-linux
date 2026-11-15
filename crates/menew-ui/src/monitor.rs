@@ -69,6 +69,14 @@ fn card(title: &str, icon: &str, with_graph: bool) -> Card {
 }
 
 impl Card {
+    /// Hide or show the card (its FlowBox cell, so no hole is left).
+    fn show(&self, on: bool) {
+        match self.root.parent() {
+            Some(cell) => cell.set_visible(on),
+            None => self.root.set_visible(on),
+        }
+    }
+
     fn set(&self, value: &str, percent: Option<f64>, detail: &str) {
         self.value.set_label(value);
         self.bar.set_visible(percent.is_some());
@@ -190,7 +198,7 @@ impl MonitorView {
         let m = &s.memory;
         let swap = if m.swap_total > 0 { format!(" · {} {}", tr("mon_swap", lang, &[]), tr("mon_used_of", lang, &[&sysmon::bytes(m.swap_used(), lang), &sysmon::bytes(m.swap_total, lang)])) } else { String::new() };
         self.mem.set(&format!("{:.0}%", m.used_percent()), Some(m.used_percent()), &(tr("mon_used_of", lang, &[&sysmon::bytes(m.used(), lang), &sysmon::bytes(m.total, lang)]) + &swap));
-        self.gpu.root.set_visible(s.gpu.is_some());
+        self.gpu.show(s.gpu.is_some());
         if let Some(g) = s.gpu {
             self.gpu.set(&format!("{g}%"), Some(g as f64), "");
         }
@@ -200,10 +208,10 @@ impl MonitorView {
                 Some(d.used_percent()),
                 &format!("{} · {}", tr("mon_used_of", lang, &[&sysmon::bytes(d.total - d.free, lang), &sysmon::bytes(d.total, lang)]), tr("mon_read_write", lang, &[&sysmon::speed(s.disk_read, lang), &sysmon::speed(s.disk_write, lang)])),
             ),
-            None => self.disk.root.set_visible(false),
+            None => self.disk.show(false),
         }
         self.net.set(&format!("↓ {}", sysmon::speed(s.net_down, lang)), None, &format!("↑ {}", sysmon::speed(s.net_up, lang)));
-        self.battery.root.set_visible(s.battery.is_some());
+        self.battery.show(s.battery.is_some());
         if let Some(b) = &s.battery {
             let mut parts = vec![tr(if b.charging() { "mon_charging" } else { "mon_on_battery" }, lang, &[])];
             if let Some(h) = b.health {

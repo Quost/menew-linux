@@ -69,18 +69,14 @@ impl Sampler {
             push();
             glib::ControlFlow::Continue
         });
-        cmds.add_provider(Rc::new(|_raw, lang| {
+        cmds.add_provider("always", Rc::new(|_raw, lang| {
             vec![PaletteItem::new("action.performance", Kind::Action, &tr("mon_open", lang, &[]))
                 .subtitle(&tr("mon_open_sub", lang, &[]))
                 .kw("desempenho performance cpu memória memory ram processos processes monitor sistema system leistung rendimiento 性能 task manager")
-                .icon(Icon::Symbol("utilities-system-monitor-symbolic"))
+                .icon(Icon::Symbol("computer-symbolic"))
                 .act(ItemAction::Command("open.performance".into()))]
         }));
         me
-    }
-
-    pub fn on_sample(&self, f: SampleListener) {
-        self.listeners.borrow_mut().push(f);
     }
 
     fn update_tray(&self) {

@@ -383,6 +383,7 @@ fn palette_items_match_the_spec() {
                 paused: r[3] == "paused",
                 queue_on: r[3] == "queue",
                 queue_len: if r[3] == "queue" { 2 } else { 0 },
+                disabled: false,
             },
             extra: &[],
         };

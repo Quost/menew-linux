@@ -51,7 +51,7 @@ fn show_qr(app: &adw::Application, palette: &menew_ui::PaletteWindow, text: &str
 
 pub fn setup(app: &adw::Application, cmds: &Rc<Commands>, palette: &Rc<menew_ui::PaletteWindow>, rt: Arc<tokio::runtime::Runtime>) {
     let p = Rc::clone(palette);
-    cmds.add_provider(Rc::new(move |raw, lang| capture::palette_items(raw, p.clipboard_text_now().as_deref(), lang)));
+    cmds.add_provider("actions", Rc::new(move |raw, lang| capture::palette_items(raw, p.clipboard_text_now().as_deref(), lang)));
     let app = app.clone();
     let p = Rc::clone(palette);
     cmds.add_runner(Rc::new(move |cmd| {

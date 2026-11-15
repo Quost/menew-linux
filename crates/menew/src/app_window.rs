@@ -39,7 +39,7 @@ pub fn setup(app: &adw::Application, cmds: &Rc<Commands>, palette: &Rc<menew_ui:
 
     // palette items for the notes
     let s = Rc::clone(&store);
-    cmds.add_provider(Rc::new(move |raw, lang| notes::palette_items(&s.borrow(), raw, lang)));
+    cmds.add_provider("notes", Rc::new(move |raw, lang| notes::palette_items(&s.borrow(), raw, lang)));
 
     let m = Rc::clone(&me);
     let p = Rc::clone(palette);

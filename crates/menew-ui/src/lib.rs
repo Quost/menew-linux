@@ -80,6 +80,12 @@ pub mod monitor;
 #[cfg(target_os = "linux")]
 pub mod notes;
 #[cfg(target_os = "linux")]
+pub mod popover;
+#[cfg(target_os = "linux")]
+pub mod settings;
+#[cfg(target_os = "linux")]
+pub mod welcome;
+#[cfg(target_os = "linux")]
 pub mod window;
 
 #[cfg(target_os = "linux")]
@@ -201,6 +207,8 @@ pub mod palette {
         /// Items of the other features for the text typed, and the runner of their commands (set by the daemon).
         extra_items: RefCell<Option<ExtraItems>>,
         command: RefCell<Option<CommandRunner>>,
+        /// The clipboard feature is on (Settings).
+        clipboard_enabled: Cell<bool>,
         /// Called when the palette opens (the daemon refreshes the quick action state).
         on_show: RefCell<Option<Rc<dyn Fn()>>>,
         /// Country of the locale, for the WhatsApp action.
@@ -464,6 +472,7 @@ pub mod palette {
                 extra_items: RefCell::new(None),
                 command: RefCell::new(None),
                 on_show: RefCell::new(None),
+                clipboard_enabled: Cell::new(true),
                 region: clip_smart::region_from_env(),
                 filter: Cell::new(ClipFilter::All),
                 chips_box,
@@ -643,6 +652,17 @@ pub mod palette {
         /// The daemon's runner of [`ItemAction::Command`].
         pub fn set_command_runner(&self, f: CommandRunner) {
             *self.command.borrow_mut() = Some(f);
+        }
+
+        pub fn set_clipboard_enabled(&self, on: bool) {
+            self.clipboard_enabled.set(on);
+        }
+
+        /// Open in Apps mode with this text typed (the popover's search box).
+        pub fn show_with_text(self: &Rc<Self>, text: &str) {
+            self.show();
+            self.search_entry.set_text(text);
+            self.search_entry.set_position(-1);
         }
 
         pub fn set_on_show(&self, f: Rc<dyn Fn()>) {
@@ -939,6 +959,7 @@ pub mod palette {
                         paused,
                         queue_on: state.queue.is_on(),
                         queue_len: state.queue.len(),
+                        disabled: !self.clipboard_enabled.get(),
                     },
                     extra: &extra,
                 };
