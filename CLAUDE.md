@@ -1,8 +1,8 @@
 # Menew for Linux: Project Rules for Agents
 
-Native Linux productivity utility built in Rust (GTK4 + Libadwaita). Separate repository from the macOS version (`../menew`). Licensed under **GPL-3.0-only**, the same as the Mac app. The name "Menew", the icon and the website are not covered by the license: see `TRADEMARK.md`.
+Native Linux productivity utility built in Rust (GTK4 + Libadwaita). Separate repository from the macOS version (`../menew`; on some machines the folder is `../MeuMenu`). Licensed under **GPL-3.0-only**, the same as the Mac app. The name "Menew", the icon and the website are not covered by the license: see `TRADEMARK.md`.
 
-**Parity with the Mac app is the goal.** Before planning or reviewing any feature, check `../menew` itself (README, `LICENSE`, `TRADEMARK.md`, `Sources/`), not only this repo, and keep `docs/parity.md` up to date.
+**Parity with the Mac app is the goal.** Before planning or reviewing any feature, check the Mac repo itself (`../menew` or `../MeuMenu`) (README, `LICENSE`, `TRADEMARK.md`, `Sources/`), not only this repo, and keep `docs/parity.md` up to date.
 
 ## Core Principles (Strict - Never Violate)
 
@@ -12,7 +12,7 @@ Native Linux productivity utility built in Rust (GTK4 + Libadwaita). Separate re
 4. **Localization (i18n)**: Every single UI string must be translatable across 5 languages: English (`en`), Portuguese (`pt`), German (`de`), Spanish (`es`), and Chinese (`zh`).
 5. **English Commits**: Conventional Commits in English (e.g., `feat(palette): ...`, `fix(clipboard): ...`).
 6. **No Em-Dash**: Never use the em-dash character in documentation or code comments. Always use the regular hyphen (`-`).
-7. **Isolation from Mac repo**: Do not touch `../menew`. The Linux version has its own lifecycle.
+7. **Isolation from Mac repo**: Do not touch the Mac repo (`../menew` or `../MeuMenu`). The Linux version has its own lifecycle.
 
 ## Technical Architecture & Decisions
 

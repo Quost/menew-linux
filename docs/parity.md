@@ -162,6 +162,23 @@ Licence: GPL-3.0-only, the same as the Mac app; name and icon under `TRADEMARK.m
 | Next meeting with Join | ✅ | 🔁 | | Evolution Data Server (GNOME) / Akonadi (KDE). |
 | Liquid Glass design | ✅ | ❌ | | libadwaita styling instead. |
 
+## Added on the Mac after this matrix was written (checked 2026-11-15)
+
+| Feature | Mac | Linux | R1 | Notes |
+|---|---|---|---|---|
+| Favorites on top of the Actions tab (`Favorites.swift`) | ✅ | ⬜ | R1 | Part of the tray popover (Phase 11). |
+| World clocks card and settings (`WorldClock.swift`) | ✅ | 🟡 | R1 | Palette `clocks` done; card and settings in Phase 11. |
+| Copy system report (`SystemReport.swift`) | ✅ | ⬜ | | Text for support: versions, desktop, session type, memory, disks. |
+| Share passwords as `.menewsecret` files (`SecretShare.swift`) | ✅ | ⬜ | | X25519 + a Secret Service key. Needs a crypto crate: decide before porting. |
+| AI agents hub: sessions, plan limits, usage (`Agent*.swift`) | ✅ | ⬜ | | Reads `~/.claude`, `~/.codex`, `~/.gemini` logs, which exist on Linux too. Release 2 candidate. |
+| MCP server (`MCPServer.swift`, `MCPHTTP.swift`) | ✅ | ⬜ | | `menew --mcp` over stdio; release 2 with the agents hub. |
+| One metric per tray icon (`MenuBarPro.swift`) | ✅ | 🟡 | | Several SNI items are possible; GNOME AppIndicator shows them, KDE too. Later. |
+| Next meeting with Join (`Meetings.swift`) | ✅ | 🔁 | | Same as the row above: EDS / Akonadi. |
+| Demo mode, snapshots and video frames (`DemoMode.swift`, `Snapshot.swift`, `VideoFrames.swift`) | ✅ | 🟡 | | The headless desktop tests already make screenshots with fake data. |
+| Send feedback as a prefilled GitHub issue (`Feedback.swift`) | ✅ | ⬜ | | Opens the browser only. |
+| Shortcuts app actions (`ShortcutActions.swift`) | ✅ | 🔁 | | D-Bus actions / CLI subcommands. |
+| Migration from MeuMenu (`Migration.swift`) | ✅ | ❌ | | Never existed on Linux. |
+
 ## Release 1 summary
 
 Done: the command palette with the behaviour of the Mac app (apps, recent picks, math, conversions, currency on Enter, time zones, text transforms, dev tools, quick links, emoji, timers and alarms with the countdown in the tray, focus, script commands; spec and test vectors in `docs/palette-spec.md`), text clipboard with search/pins/password filter, tray basics, opt-in autostart, packaging (.deb verified; AppImage being fixed).
