@@ -73,6 +73,10 @@ impl ClipHooks {
 
 #[cfg(target_os = "linux")]
 pub mod dialogs;
+#[cfg(target_os = "linux")]
+pub mod notes;
+#[cfg(target_os = "linux")]
+pub mod window;
 
 #[cfg(target_os = "linux")]
 pub mod palette {
@@ -988,8 +992,8 @@ pub mod palette {
                         .title_lines(1)
                         .subtitle_lines(1)
                         .use_markup(false)
-                        .icon_name("insert-text-symbolic")
                         .build();
+                    row.add_prefix(&gtk4::Image::from_icon_name("insert-text-symbolic"));
                     self.list_box.append(&row);
                 }
                 *self.visible_snippets.borrow_mut() = found;

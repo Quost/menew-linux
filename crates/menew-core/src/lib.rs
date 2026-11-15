@@ -17,6 +17,7 @@ pub mod format;
 pub mod i18n;
 pub mod palette;
 pub mod quick_actions;
+pub mod notes;
 pub mod ocr;
 pub mod paste;
 pub mod paste_queue;
