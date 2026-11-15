@@ -1012,6 +1012,7 @@ dependencies = [
  "libadwaita",
  "menew-clipboard",
  "menew-core",
+ "menew-desktop",
  "menew-shortcuts",
  "menew-tray",
  "menew-ui",
@@ -1045,6 +1046,16 @@ dependencies = [
  "serde_json",
  "tempfile",
  "walkdir",
+]
+
+[[package]]
+name = "menew-desktop"
+version = "0.1.0-alpha.1"
+dependencies = [
+ "ashpd",
+ "tokio",
+ "tracing",
+ "zbus",
 ]
 
 [[package]]

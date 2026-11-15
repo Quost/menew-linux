@@ -38,6 +38,10 @@ pub struct Config {
     pub clipboard_auto_delete_days: u32,
     /// Read the text of copied images with tesseract (`clipboardOCR`, on by default).
     pub clipboard_ocr: bool,
+    /// Apps "Quit all apps" never closes (`neverQuit` on the Mac): desktop ids or program names.
+    pub never_quit: Vec<String>,
+    /// Metrics shown next to the tray icon (`menuBarMetrics`): see `sysmon::TRAY_METRICS`.
+    pub tray_metrics: Vec<String>,
 }
 
 impl Default for Config {
@@ -51,6 +55,8 @@ impl Default for Config {
             clipboard_max_items: crate::clip_item::DEFAULT_MAX_ITEMS,
             clipboard_auto_delete_days: 0,
             clipboard_ocr: true,
+            never_quit: vec![],
+            tray_metrics: vec![],
         }
     }
 }

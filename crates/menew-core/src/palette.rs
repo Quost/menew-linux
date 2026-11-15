@@ -107,6 +107,9 @@ pub enum ItemAction {
     ToggleQueue,
     /// Paste the next item of the queue.
     PasteNext,
+    /// A command run by the daemon (quick actions `qa.*`, notes `note.*`, screenshots `cap.*`,
+    /// windows `win.*`, the Menew window `win.open:*`...), see `crates/menew/src/commands.rs`.
+    Command(String),
 }
 
 impl ItemAction {
@@ -147,6 +150,7 @@ impl ItemAction {
             ItemAction::ResumeClipboard => "resume-clipboard".into(),
             ItemAction::ToggleQueue => "toggle-queue".into(),
             ItemAction::PasteNext => "paste-next".into(),
+            ItemAction::Command(c) => format!("command:{c}"),
         }
     }
 }
@@ -252,6 +256,9 @@ pub struct PaletteContext<'a> {
     pub scripts: &'a [Script],
     pub autostart_on: bool,
     pub clip: ClipContext<'a>,
+    /// Items of the other features (quick actions, notes, screenshots, windows), already built for
+    /// the text typed. They are searched and ranked like the Menew actions.
+    pub extra: &'a [PaletteItem],
 }
 
 const SUGGESTIONS: [&str; 4] = ["action.clipboard", "action.focus", "action.clearclip", "action.uuid"];
@@ -476,6 +483,7 @@ fn commands(ctx: &PaletteContext) -> Vec<PaletteItem> {
             .icon(Icon::Symbol("application-exit-symbolic"))
             .act(ItemAction::Quit),
     );
+    out.extend(ctx.extra.iter().cloned());
     for app in ctx.apps {
         let sub = app.generic_name.as_deref().or(app.comment.as_deref()).unwrap_or("");
         let kw = format!("{} {}", app.keywords.join(" "), app.generic_name.clone().unwrap_or_default());
@@ -654,6 +662,7 @@ mod tests {
             scripts: &[],
             autostart_on: false,
             clip: Default::default(),
+            extra: &[],
         };
         results(&ctx, query, &|_| vec![])
     }
@@ -731,6 +740,7 @@ mod tests {
             scripts: &[],
             autostart_on: false,
             clip: Default::default(),
+            extra: &[],
         };
         let out = results(&ctx, "appy", &|_| vec![]);
         assert_eq!(out.len(), MAX_RESULTS + 1);
@@ -755,6 +765,7 @@ mod tests {
             scripts: &[],
             autostart_on: false,
             clip: Default::default(),
+            extra: &[],
         };
         let hit = |id: i64, t: &str| ClipHit { id, title: t.into(), text: t.into(), kind: ClipKind::Text };
         let out = results(&ctx, "history", &|_| vec![hit(1, "my history notes")]);

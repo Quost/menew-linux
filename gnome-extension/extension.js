@@ -41,6 +41,114 @@ const ClipboardIfaceXml = `
   </interface>
 </node>`;
 
+// Window snapping and the front app, called by the daemon (Wayland apps can't move other windows).
+const ShellIfaceXml = `
+<node>
+  <interface name="org.menew.Shell">
+    <method name="SnapFocused">
+      <arg type="d" name="x" direction="in"/>
+      <arg type="d" name="y" direction="in"/>
+      <arg type="d" name="width" direction="in"/>
+      <arg type="d" name="height" direction="in"/>
+      <arg type="b" name="done" direction="out"/>
+    </method>
+    <method name="MaximizeFocused">
+      <arg type="b" name="done" direction="out"/>
+    </method>
+    <method name="CenterFocused">
+      <arg type="b" name="done" direction="out"/>
+    </method>
+    <method name="MoveFocusedToNextMonitor">
+      <arg type="b" name="done" direction="out"/>
+    </method>
+    <method name="FocusedApp">
+      <arg type="s" name="app_id" direction="out"/>
+      <arg type="s" name="app_name" direction="out"/>
+    </method>
+  </interface>
+</node>`;
+
+/** The window people were using: Menew's own palette never counts. */
+function frontWindow() {
+    const win = global.display.focus_window;
+    if (win && win.get_gtk_application_id?.() === 'app.menew.Menew') {
+        // the palette is closing: take the next window of the stack
+        const list = global.display.get_tab_list(Meta.TabList.NORMAL, null);
+        return list.find(w => w !== win) || null;
+    }
+    if (!win || win.get_window_type() !== Meta.WindowType.NORMAL)
+        return null;
+    return win;
+}
+
+function unmaximize(win) {
+    try {
+        win.unmaximize(Meta.MaximizeFlags.BOTH);
+    } catch (e) {
+        // GNOME 49 dropped the flags argument
+        try { win.unmaximize(); } catch (e2) { /* not maximized */ }
+    }
+}
+
+class ShellService {
+    SnapFocused(x, y, width, height) {
+        const win = frontWindow();
+        if (!win)
+            return false;
+        unmaximize(win);
+        const a = win.get_work_area_current_monitor();
+        win.move_resize_frame(true, Math.round(a.x + a.width * x), Math.round(a.y + a.height * y),
+            Math.round(a.width * width), Math.round(a.height * height));
+        win.activate(global.get_current_time());
+        return true;
+    }
+
+    MaximizeFocused() {
+        const win = frontWindow();
+        if (!win)
+            return false;
+        try {
+            win.maximize(Meta.MaximizeFlags.BOTH);
+        } catch (e) {
+            win.maximize();
+        }
+        return true;
+    }
+
+    CenterFocused() {
+        const win = frontWindow();
+        if (!win)
+            return false;
+        const a = win.get_work_area_current_monitor();
+        const r = win.get_frame_rect();
+        win.move_frame(true, Math.round(a.x + (a.width - r.width) / 2), Math.round(a.y + (a.height - r.height) / 2));
+        return true;
+    }
+
+    MoveFocusedToNextMonitor() {
+        const win = frontWindow();
+        const n = global.display.get_n_monitors();
+        if (!win || n < 2)
+            return false;
+        win.move_to_monitor((win.get_monitor() + 1) % n);
+        return true;
+    }
+
+    FocusedApp() {
+        const win = frontWindow();
+        if (!win)
+            return ['', ''];
+        const id = win.get_gtk_application_id?.() || win.get_wm_class?.() || '';
+        let name = id;
+        try {
+            const app = Shell.WindowTracker.get_default().get_window_app(win);
+            if (app)
+                name = app.get_name();
+        } catch (e) { /* the class is enough */ }
+        return [id, name];
+    }
+}
+
 function isSecretType(mime) {
     const m = mime.toLowerCase();
     return m.includes('password') || m.includes('secret') || m.includes('concealedtype') ||
@@ -56,6 +164,19 @@ export default class MenewClipboardExtension extends Extension {
 
         this._initDbusProxy();
         this._startClipboardWatcher();
+        this._exportShellService();
+    }
+
+    _exportShellService() {
+        try {
+            this._shellService = Gio.DBusExportedObject.wrapJSObject(ShellIfaceXml, new ShellService());
+            this._shellService.export(Gio.DBus.session, '/org/menew/Shell');
+            this._shellNameId = Gio.bus_own_name_on_connection(Gio.DBus.session, 'org.menew.Shell',
+                Gio.BusNameOwnerFlags.NONE, null, null);
+            console.log('[MenewExtension] Window service exported as org.menew.Shell');
+        } catch (e) {
+            console.error(`[MenewExtension] Could not export org.menew.Shell: ${e.message}`);
+        }
     }
 
     disable() {
@@ -70,6 +191,14 @@ export default class MenewClipboardExtension extends Extension {
 
         this._dbusProxy = null;
         this._lastCopiedText = null;
+        if (this._shellNameId) {
+            Gio.bus_unown_name(this._shellNameId);
+            this._shellNameId = 0;
+        }
+        if (this._shellService) {
+            this._shellService.unexport();
+            this._shellService = null;
+        }
     }
 
     _initDbusProxy() {

@@ -5,6 +5,7 @@ members = [
     "crates/menew-shortcuts",
     "crates/menew-clipboard",
     "crates/menew-ui",
+    "crates/menew-desktop",
     "crates/menew",
 ]
 resolver = "2"

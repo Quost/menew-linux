@@ -40,6 +40,11 @@ impl PaletteState {
 
 pub type SharedState = Rc<RefCell<PaletteState>>;
 
+/// The daemon's items for the text typed.
+pub type ExtraItems = Rc<dyn Fn(&str) -> Vec<menew_core::palette::PaletteItem>>;
+/// The daemon's runner of a command id.
+pub type CommandRunner = Rc<dyn Fn(&str)>;
+
 /// What the palette asks of the daemon about the clipboard capture.
 #[derive(Clone)]
 pub struct ClipHooks {
@@ -65,6 +70,9 @@ impl ClipHooks {
         }
     }
 }
+
+#[cfg(target_os = "linux")]
+pub mod dialogs;
 
 #[cfg(target_os = "linux")]
 pub mod palette {
@@ -182,6 +190,11 @@ pub mod palette {
         /// The text the current list was built for.
         last_query: RefCell<String>,
         hooks: ClipHooks,
+        /// Items of the other features for the text typed, and the runner of their commands (set by the daemon).
+        extra_items: RefCell<Option<ExtraItems>>,
+        command: RefCell<Option<CommandRunner>>,
+        /// Called when the palette opens (the daemon refreshes the quick action state).
+        on_show: RefCell<Option<Rc<dyn Fn()>>>,
         /// Country of the locale, for the WhatsApp action.
         region: Option<String>,
         // ---- clipboard mode ----
@@ -440,6 +453,9 @@ pub mod palette {
                 query_empty,
                 last_query: RefCell::new(String::new()),
                 hooks,
+                extra_items: RefCell::new(None),
+                command: RefCell::new(None),
+                on_show: RefCell::new(None),
                 region: clip_smart::region_from_env(),
                 filter: Cell::new(ClipFilter::All),
                 chips_box,
@@ -609,6 +625,43 @@ pub mod palette {
             });
             let this = Rc::clone(self);
             self.new_snippet_btn.connect_clicked(move |_| this.edit_snippet(None));
+        }
+
+        /// The daemon's items for the text typed (quick actions, notes, screenshots, windows).
+        pub fn set_extra_items(&self, f: ExtraItems) {
+            *self.extra_items.borrow_mut() = Some(f);
+        }
+
+        /// The daemon's runner of [`ItemAction::Command`].
+        pub fn set_command_runner(&self, f: CommandRunner) {
+            *self.command.borrow_mut() = Some(f);
+        }
+
+        pub fn set_on_show(&self, f: Rc<dyn Fn()>) {
+            *self.on_show.borrow_mut() = Some(f);
+        }
+
+        /// The installed apps, as scanned when the palette last opened.
+        pub fn apps(&self) -> Vec<DesktopApp> {
+            self.apps.borrow().clone()
+        }
+
+        /// Rebuild the list for the text in the search box (after the daemon's state changed).
+        pub fn refresh_now(self: &Rc<Self>) {
+            if self.window.is_visible() {
+                let q = self.search_entry.text().to_string();
+                self.refresh_list(&q);
+            }
+        }
+
+        /// The GTK application (for the other windows).
+        pub fn application(&self) -> adw::Application {
+            self.app.clone()
+        }
+
+        /// Run an item action as if it was picked in the palette (tray popover, favorites).
+        pub fn run_item_action(self: &Rc<Self>, action: ItemAction) {
+            self.run_action(action);
         }
 
         pub fn mode(&self) -> PaletteMode {
@@ -851,6 +904,7 @@ pub mod palette {
             let scripts = self.scripts();
             let clip_text = self.clipboard_text();
             let paused = (self.hooks.is_paused)();
+            let extra = self.extra_items.borrow().as_ref().map(|f| f(raw)).unwrap_or_default();
             let items = {
                 let state = self.state.borrow();
                 let apps = self.apps.borrow();
@@ -873,6 +927,7 @@ pub mod palette {
                         queue_on: state.queue.is_on(),
                         queue_len: state.queue.len(),
                     },
+                    extra: &extra,
                 };
                 let db = self.db.clone();
                 let clip_search = move |q: &str| -> Vec<ClipHit> {
@@ -1116,6 +1171,10 @@ pub mod palette {
                 // Reload desktop files to catch newly installed apps
                 *self.apps.borrow_mut() = DesktopScanner::scan_all();
                 self.read_clipboard();
+                let f = self.on_show.borrow().clone();
+                if let Some(f) = f {
+                    f();
+                }
             }
             self.set_mode(mode);
             self.window.set_visible(true);
@@ -1227,7 +1286,7 @@ pub mod palette {
 
         // ---- what the items do ----
 
-        fn notify(&self, id: &str, title: &str, body: Option<&str>) {
+        pub fn notify(&self, id: &str, title: &str, body: Option<&str>) {
             let n = gio::Notification::new(title);
             if let Some(b) = body {
                 n.set_body(Some(b));
@@ -1236,12 +1295,12 @@ pub mod palette {
             info!("Notification sent: {}{}", title, body.map(|b| format!(" / {b}")).unwrap_or_default());
         }
 
-        fn copied(&self, text: &str) {
+        pub fn copied(&self, text: &str) {
             self.copy_to_clipboard(text);
             self.notify("menew-copied", &tr("copied_value", current_language(), &[text]), None);
         }
 
-        fn open_uri(&self, uri: &str) {
+        pub fn open_uri(&self, uri: &str) {
             match gio::AppInfo::launch_default_for_uri(uri, gio::AppLaunchContext::NONE) {
                 Ok(()) => info!("Opened {}", uri),
                 Err(e) => tracing::warn!("Could not open {}: {}", uri, e),
@@ -1363,6 +1422,13 @@ pub mod palette {
                 ItemAction::GenerateUuid => self.copied(&dev_tools::uuid_v4()),
                 ItemAction::CopyUnixTimestamp => self.copied(&dev_tools::now_secs().to_string()),
                 ItemAction::Quit => self.app.quit(),
+                ItemAction::Command(c) => {
+                    let f = self.command.borrow().clone();
+                    match f {
+                        Some(f) => f(&c),
+                        None => tracing::warn!("Palette: no runner for command {}", c),
+                    }
+                }
             }
         }
 
@@ -2079,6 +2145,24 @@ pub mod palette {
                 self.window.present();
                 info!("Test mode: window shown so the headless compositor accepts the selection");
             }
+        }
+
+        /// Put the clipboard's text back as plain text only (drops formatting, images, files).
+        pub fn plain_text_clipboard(self: &Rc<Self>) {
+            let Some(display) = gdk::Display::default() else { return };
+            let clipboard = display.clipboard();
+            let this = Rc::clone(self);
+            clipboard.read_text_async(gio::Cancellable::NONE, move |res| {
+                let lang = current_language();
+                match res {
+                    Ok(Some(text)) if !text.is_empty() => {
+                        (this.hooks.expect_own)(own_key(ClipKind::Text, text.as_str()), true);
+                        this.copy_to_clipboard(text.as_str());
+                        this.notify("menew-plain", &tr("qa_plain_done", lang, &[]), None);
+                    }
+                    _ => this.notify("menew-plain", &tr("qa_plain_none", lang, &[]), None),
+                }
+            });
         }
 
         pub fn copy_to_clipboard(&self, text: &str) {

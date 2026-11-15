@@ -384,6 +384,7 @@ fn palette_items_match_the_spec() {
                 queue_on: r[3] == "queue",
                 queue_len: if r[3] == "queue" { 2 } else { 0 },
             },
+            extra: &[],
         };
         let input = if r[4] == "(empty)" { String::new() } else { r[4].clone() };
         let out = results(&ctx, &input, &|_| vec![]);
