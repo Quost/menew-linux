@@ -332,6 +332,13 @@ impl ClipboardDatabase {
         Ok(new_state != 0)
     }
 
+    /// Set the time of an entry (milliseconds); the demo data of `--snapshot` uses it for varied ages.
+    pub fn set_created_at(&self, id: i64, created_at: i64) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute("UPDATE clipboard_entries SET created_at = ? WHERE id = ?", params![created_at, id])?;
+        Ok(())
+    }
+
     /// Move an entry to the top, as if it had just been copied.
     pub fn touch(&self, id: i64) -> Result<()> {
         let now = chrono::Utc::now().timestamp_millis();

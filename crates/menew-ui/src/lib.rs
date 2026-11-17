@@ -67,6 +67,9 @@ impl ClipHooks {
 }
 
 #[cfg(target_os = "linux")]
+pub mod snapshot;
+
+#[cfg(target_os = "linux")]
 pub mod palette {
     use super::*;
     use gtk4::gdk;
@@ -200,6 +203,8 @@ pub mod palette {
         /// Set while the widgets are changed by code, so their handlers do not run.
         syncing: Cell<bool>,
         thumbs: RefCell<HashMap<String, gdk::Texture>>,
+        /// Demo mode (`--snapshot`): never reads the machine's apps, scripts or clipboard.
+        demo: bool,
     }
 
     /// Operation simulated by the `MENEW_TEST=1` hooks.
@@ -224,6 +229,15 @@ pub mod palette {
 
     impl PaletteWindow {
         pub fn create(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>, hooks: ClipHooks) -> Rc<Self> {
+            Self::build(app, db, state, on_state, hooks, DesktopScanner::scan_all(), false)
+        }
+
+        /// Palette for `menew --snapshot`: fixed apps, no scripts folder, no clipboard read, no real data.
+        pub fn create_demo(app: &adw::Application, db: ClipboardDatabase, state: SharedState, apps: Vec<DesktopApp>) -> Rc<Self> {
+            Self::build(app, db, state, Rc::new(|| {}), ClipHooks::inert(), apps, true)
+        }
+
+        fn build(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>, hooks: ClipHooks, apps: Vec<DesktopApp>, demo: bool) -> Rc<Self> {
             if let Some(display) = gdk::Display::default() {
                 let provider = gtk4::CssProvider::new();
                 provider.load_from_data(CSS);
@@ -432,7 +446,8 @@ pub mod palette {
                 mode_label,
                 hint_label,
                 mode: Cell::new(PaletteMode::Apps),
-                apps: Rc::new(RefCell::new(DesktopScanner::scan_all())),
+                apps: Rc::new(RefCell::new(apps)),
+                demo,
                 items,
                 visible_entries: Rc::new(RefCell::new(Vec::new())),
                 clip_text: RefCell::new(None),
@@ -829,6 +844,9 @@ pub mod palette {
         /// Scripts of the folder, re-read at most every 3 seconds (the palette asks on every key).
         fn scripts(&self) -> Vec<Script> {
             let mut cache = self.scripts.borrow_mut();
+            if self.demo {
+                return Vec::new();
+            }
             let stale = cache.0.map(|t| t.elapsed() > Duration::from_secs(3)).unwrap_or(true);
             if stale {
                 *cache = (Some(Instant::now()), script_commands::scan(&script_commands::folder()));
@@ -1112,7 +1130,7 @@ pub mod palette {
 
         /// Show (or switch an already visible palette) in the given mode.
         pub fn show_mode(self: &Rc<Self>, mode: PaletteMode) {
-            if mode == PaletteMode::Apps {
+            if mode == PaletteMode::Apps && !self.demo {
                 // Reload desktop files to catch newly installed apps
                 *self.apps.borrow_mut() = DesktopScanner::scan_all();
                 self.read_clipboard();
@@ -2069,6 +2087,50 @@ pub mod palette {
                 self.activate_index(index);
             }
             exists
+        }
+
+        /// `--snapshot`: show the Apps list for `text`, with `clip` as the copied text (never the real clipboard).
+        pub fn demo_apps(self: &Rc<Self>, text: &str, clip: Option<&str>) {
+            self.show_mode(PaletteMode::Apps);
+            *self.clip_text.borrow_mut() = clip.map(str::to_string);
+            self.search_entry.set_text(text);
+            self.refresh_list(text);
+            if !self.items.borrow().is_empty() {
+                if let Some(row) = self.list_box.row_at_index(0) {
+                    self.list_box.select_row(Some(&row));
+                }
+            }
+        }
+
+        /// `--snapshot`: show the clipboard list with that filter and the first row selected.
+        pub fn demo_clipboard(self: &Rc<Self>, filter: ClipFilter, query: &str) {
+            self.show_mode(PaletteMode::Clipboard);
+            self.search_entry.set_text(query);
+            self.set_filter(filter);
+            self.refresh_list(query);
+            if let Some(row) = self.list_box.row_at_index(0) {
+                self.list_box.select_row(Some(&row));
+            }
+        }
+
+        /// `--snapshot`: draw the palette card (with a soft shadow and a transparent margin) to a PNG.
+        pub fn capture_png(&self, path: &std::path::Path) -> Result<(), String> {
+            use gtk4::{graphene, gsk};
+            let child = self.window.content().ok_or("no content")?;
+            let (w, h) = (child.width() as f32, child.height() as f32);
+            if w < 1.0 || h < 1.0 {
+                return Err("the palette has no size yet".into());
+            }
+            let margin = 32.0_f32;
+            let snap = gtk4::Snapshot::new();
+            let card = gsk::RoundedRect::from_rect(graphene::Rect::new(margin, margin, w, h), 14.0);
+            snap.append_outset_shadow(&card, &gdk::RGBA::new(0.0, 0.0, 0.0, 0.30), 0.0, 8.0, 0.0, 24.0);
+            snap.translate(&graphene::Point::new(margin, margin));
+            gtk4::WidgetPaintable::new(Some(&child)).snapshot(&snap, w as f64, h as f64);
+            let node = snap.to_node().ok_or("nothing was drawn")?;
+            let renderer = self.window.native().and_then(|n| n.renderer()).ok_or("no renderer")?;
+            let texture = renderer.render_texture(&node, Some(&graphene::Rect::new(0.0, 0.0, w + 2.0 * margin, h + 2.0 * margin)));
+            texture.save_to_png(path).map_err(|e| e.to_string())
         }
 
         /// Headless test sessions only let a client with a mapped window set the selection: with `MENEW_TEST=1`

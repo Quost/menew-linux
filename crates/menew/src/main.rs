@@ -123,6 +123,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return handle_clipboard_push();
     }
 
+    // `menew --snapshot <dir> [-language en|pt|de|es|zh]`: render the screens with fake data and exit.
+    // It never reads the clipboard, apps, notes or config of the user, and never talks to a running daemon.
+    #[cfg(target_os = "linux")]
+    if let Some((dir, lang)) = snapshot_request(&args) {
+        return run_snapshot(dir, lang);
+    }
+
     info!("Starting Menew Linux");
 
     // Language detection
@@ -141,6 +148,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         run_stub_app();
     }
 
+    Ok(())
+}
+
+/// Parse `--snapshot <dir>` and the optional `-language <code>` / `--language <code>` (default: English).
+#[cfg(target_os = "linux")]
+fn snapshot_request(args: &[String]) -> Option<(std::path::PathBuf, Language)> {
+    let p = args.iter().position(|a| a == "--snapshot")?;
+    let dir = args.get(p + 1).filter(|d| !d.starts_with('-'))?;
+    let lang = args
+        .iter()
+        .position(|a| a == "-language" || a == "--language")
+        .and_then(|l| args.get(l + 1))
+        .map(|c| Language::from_code(c))
+        .unwrap_or(Language::En);
+    Some((std::path::PathBuf::from(dir), lang))
+}
+
+/// `menew --snapshot`: a separate, non-unique application, so a running daemon is never contacted.
+#[cfg(target_os = "linux")]
+fn run_snapshot(dir: std::path::PathBuf, lang: Language) -> Result<(), Box<dyn std::error::Error>> {
+    set_language(lang);
+    let app = adw::Application::builder()
+        .application_id("app.menew.Menew.Snapshot")
+        .flags(gio::ApplicationFlags::NON_UNIQUE)
+        .build();
+    let failed = Rc::new(std::cell::Cell::new(false));
+    let f = failed.clone();
+    app.connect_activate(move |app| {
+        menew_ui::snapshot::run(app, dir.clone(), lang, f.clone());
+    });
+    app.run_with_args::<&str>(&[]);
+    if failed.get() {
+        return Err("snapshot failed".into());
+    }
     Ok(())
 }
 

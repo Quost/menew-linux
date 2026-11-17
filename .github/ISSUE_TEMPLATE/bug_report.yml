@@ -1,0 +1,87 @@
+name: 🐞 Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this! Run `menew --version` in a terminal to fill in the version below.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: A clear description of the problem. Screenshots help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the clipboard history (Ctrl+Alt+V)
+        2. ...
+  - type: input
+    id: version
+    attributes:
+      label: Menew version (`menew --version`)
+      placeholder: "menew 0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution
+      placeholder: "Ubuntu 24.04"
+    validations:
+      required: true
+  - type: dropdown
+    id: desktop
+    attributes:
+      label: Desktop
+      options:
+        - GNOME
+        - KDE Plasma
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: desktop-version
+    attributes:
+      label: Desktop version
+      placeholder: "GNOME Shell 46"
+  - type: dropdown
+    id: session
+    attributes:
+      label: Session
+      options:
+        - Wayland
+        - X11
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install it?
+      options:
+        - .deb
+        - AppImage
+        - AUR
+        - Built from source
+        - Other
+  - type: input
+    id: language
+    attributes:
+      label: Menew language
+      placeholder: "English"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output (optional)
+      description: Run `menew quit`, then start `menew` from a terminal and paste what it prints when the problem happens.
+      render: shell

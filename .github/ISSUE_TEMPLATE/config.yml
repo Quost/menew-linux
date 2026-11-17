@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 🌐 Website
+    url: https://menew.web.app/?ref=github
+    about: Features and keyboard shortcuts.
+  - name: 🍎 Menew for Mac
+    url: https://github.com/Quost/menew/issues/new/choose
+    about: Problem or idea about the Mac app? It lives in its own repository.
+  - name: ☕ Support the project
+    url: https://buymeacoffee.com/quost
+    about: Menew is free; a coffee keeps it going.
+  - name: 🔒 Report a security issue
+    url: https://github.com/Quost/menew-linux/security/advisories/new
+    about: Please report vulnerabilities privately, not as a public issue.

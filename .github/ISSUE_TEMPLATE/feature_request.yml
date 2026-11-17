@@ -1,0 +1,29 @@
+name: 💡 Idea or feature request
+description: Suggest something that would make Menew better
+labels: ["idea"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like Menew to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would it help you?
+      description: The problem behind the idea. This helps find the best solution.
+  - type: input
+    id: mac
+    attributes:
+      label: Does the Mac app already do it?
+      description: Menew for Linux aims at parity with the Mac app; a link or a name helps.
+  - type: input
+    id: version
+    attributes:
+      label: Menew version (`menew --version`)
+  - type: input
+    id: desktop
+    attributes:
+      label: Desktop and session
+      placeholder: "GNOME on Wayland"
