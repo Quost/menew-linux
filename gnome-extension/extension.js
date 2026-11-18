@@ -1,4 +1,5 @@
 import Gio from 'gi://Gio';
+import GLib from 'gi://GLib';
 import Meta from 'gi://Meta';
 import St from 'gi://St';
 import Shell from 'gi://Shell';
@@ -137,6 +138,15 @@ export default class MenewClipboardExtension extends Extension {
         // Privacy check: password manager hints, for text, images and files alike
         if (mimes.some(isSecretType)) {
             console.log('[MenewExtension] Ignoring clipboard content marked secret by password manager');
+            this._secretSeenAt = GLib.get_monotonic_time();
+            return;
+        }
+        // Mutter reports other owner changes within a few ms of a copy (its own proxy of the selection), and they
+        // carry no password hint. A change next to a secret copy, before or after it, is the same secret again.
+        const eventAt = GLib.get_monotonic_time();
+        const nearSecret = () => this._secretSeenAt && Math.abs(this._secretSeenAt - eventAt) < 1500 * 1000;
+        if (nearSecret()) {
+            console.log('[MenewExtension] Ignoring the follow-up of a secret copy');
             return;
         }
 
@@ -157,7 +167,15 @@ export default class MenewClipboardExtension extends Extension {
                 console.log('[MenewExtension] Capture paused or app ignored: not reading the clipboard');
                 return;
             }
-            this._readAndSend(mimes, appId, appName);
+            // wait a moment: the secret copy that this event belongs to may be announced just after it
+            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
+                if (nearSecret()) {
+                    console.log('[MenewExtension] Ignoring an event that came with a secret copy');
+                } else {
+                    this._readAndSend(mimes, appId, appName);
+                }
+                return GLib.SOURCE_REMOVE;
+            });
         });
     }
 

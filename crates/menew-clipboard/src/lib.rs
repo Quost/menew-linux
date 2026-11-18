@@ -1,3 +1,6 @@
+#[cfg(target_os = "linux")]
+pub mod secrets;
+
 use menew_core::clip_policy::{self, Capture, PauseState, MAX_BYTES};
 use menew_core::{ClipKind, ClipboardDatabase, ClipboardEntry, Config};
 use std::sync::atomic::{AtomicBool, Ordering};

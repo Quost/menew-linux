@@ -28,14 +28,15 @@ license-file = ["../../LICENSE", "0"]
 section = "utils"
 priority = "optional"
 extended-description = """\
-Private, native command palette and clipboard history for GNOME and KDE Plasma on Wayland.
+Private, native command palette, clipboard history and notes for GNOME and KDE Plasma on Wayland.
 The GNOME Shell clipboard extension is installed but not enabled; enable it yourself."""
 depends = "$auto, curl"
-recommends = "wl-clipboard, fonts-noto-color-emoji, tesseract-ocr, tesseract-ocr-eng"
+recommends = "wl-clipboard, fonts-noto-color-emoji, tesseract-ocr, tesseract-ocr-eng, gnome-keyring | kwalletmanager, polkitd"
 assets = [
     ["target/release/menew", "usr/bin/menew", "755"],
     ["../../data/app.menew.Menew.desktop", "usr/share/applications/app.menew.Menew.desktop", "644"],
     ["../../data/app.menew.Menew.metainfo.xml", "usr/share/metainfo/app.menew.Menew.metainfo.xml", "644"],
+    ["../../data/app.menew.Menew.policy", "usr/share/polkit-1/actions/app.menew.Menew.policy", "644"],
     ["../../data/icons/hicolor/scalable/apps/menew.svg", "usr/share/icons/hicolor/scalable/apps/menew.svg", "644"],
     ["../../data/icons/hicolor/scalable/apps/menew-symbolic.svg", "usr/share/icons/hicolor/scalable/apps/menew-symbolic.svg", "644"],
     ["../../gnome-extension/metadata.json", "usr/share/gnome-shell/extensions/menew-bridge@menew.web.app/metadata.json", "644"],

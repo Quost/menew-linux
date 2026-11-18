@@ -8,6 +8,7 @@ use crate::clip_item::collapsed_preview;
 use crate::clip_smart::{self, SmartRun};
 use crate::clipboard_db::ClipKind;
 use crate::snippets::Snippet;
+use crate::notes::Note;
 use crate::currency;
 use crate::desktop_entry::DesktopApp;
 use crate::dev_tools;
@@ -46,7 +47,8 @@ impl Kind {
             Kind::Clip => "kind_clip",
             Kind::Tip => "kind_tip",
             Kind::Snippet => "kind_snippet",
-            Kind::Profile | Kind::Window | Kind::Note => "kind_action",
+            Kind::Note => "kind_note",
+            Kind::Profile | Kind::Window => "kind_action",
         };
         tr(key, lang, &[])
     }
@@ -100,6 +102,10 @@ pub enum ItemAction {
     PasteEntry(i64),
     /// Paste the snippet with this id (asks its `{input:}` fields first).
     PasteSnippet(String),
+    /// Open this note (by id) in the notes window; protected ones ask for the password first.
+    OpenNote(String),
+    NewNote,
+    NewPasswordsNote,
     /// Pause the capture for that many minutes, or until resumed.
     PauseClipboard(Option<u32>),
     ResumeClipboard,
@@ -142,6 +148,9 @@ impl ItemAction {
             ItemAction::PasteClip(_) => "paste-clip".into(),
             ItemAction::PasteEntry(id) => format!("paste-entry:{id}"),
             ItemAction::PasteSnippet(id) => format!("paste-snippet:{id}"),
+            ItemAction::OpenNote(id) => format!("open-note:{id}"),
+            ItemAction::NewNote => "new-note".into(),
+            ItemAction::NewPasswordsNote => "new-passwords-note".into(),
             ItemAction::PauseClipboard(Some(m)) => format!("pause-clipboard:{m}"),
             ItemAction::PauseClipboard(None) => "pause-clipboard".into(),
             ItemAction::ResumeClipboard => "resume-clipboard".into(),
@@ -252,6 +261,8 @@ pub struct PaletteContext<'a> {
     pub scripts: &'a [Script],
     pub autostart_on: bool,
     pub clip: ClipContext<'a>,
+    /// The notes: protected ones have only their title in `text`.
+    pub notes: &'a [Note],
 }
 
 const SUGGESTIONS: [&str; 4] = ["action.clipboard", "action.focus", "action.clearclip", "action.uuid"];
@@ -425,6 +436,30 @@ fn commands(ctx: &PaletteContext) -> Vec<PaletteItem> {
                 .act(ItemAction::PasteSnippet(s.id.clone())),
         );
     }
+    // notes (`Palette.commands`): the title and preview, the text as keywords (protected ones: title only)
+    for n in ctx.notes {
+        let icon = if n.is_passwords() { "dialog-password-symbolic" } else if n.secure { "changes-prevent-symbolic" } else { "text-x-generic-symbolic" };
+        out.push(
+            PaletteItem::new(&format!("note.{}", n.id), Kind::Note, &n.title(lang))
+                .subtitle(&n.preview(lang))
+                .kw(if n.secure { "" } else { &n.text })
+                .icon(Icon::Symbol(icon))
+                .act(ItemAction::OpenNote(n.id.clone())),
+        );
+    }
+    // linux: the Mac has these buttons in the notes tab; here they are also actions of the palette
+    out.push(
+        PaletteItem::new("action.newnote", Kind::Action, &tr("act_new_note", lang, &[]))
+            .kw("nota note notiz nueva nova neu 笔记 new")
+            .icon(Icon::Symbol("document-new-symbolic"))
+            .act(ItemAction::NewNote),
+    );
+    out.push(
+        PaletteItem::new("action.newpasswords", Kind::Action, &tr("notes_new_passwords", lang, &[]))
+            .kw("senha password passwort contraseña 密码 nota note notiz new nova")
+            .icon(Icon::Symbol("dialog-password-symbolic"))
+            .act(ItemAction::NewPasswordsNote),
+    );
     out.push(
         PaletteItem::new(
             "action.autostart",
@@ -654,6 +689,7 @@ mod tests {
             scripts: &[],
             autostart_on: false,
             clip: Default::default(),
+            notes: &[],
         };
         results(&ctx, query, &|_| vec![])
     }
@@ -731,6 +767,7 @@ mod tests {
             scripts: &[],
             autostart_on: false,
             clip: Default::default(),
+            notes: &[],
         };
         let out = results(&ctx, "appy", &|_| vec![]);
         assert_eq!(out.len(), MAX_RESULTS + 1);
@@ -755,6 +792,7 @@ mod tests {
             scripts: &[],
             autostart_on: false,
             clip: Default::default(),
+            notes: &[],
         };
         let hit = |id: i64, t: &str| ClipHit { id, title: t.into(), text: t.into(), kind: ClipKind::Text };
         let out = results(&ctx, "history", &|_| vec![hit(1, "my history notes")]);

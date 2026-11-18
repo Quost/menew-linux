@@ -63,3 +63,17 @@ typelibs, which come with the GTK dev packages).
 Both scripts only record the result of `menew` registering the shortcut. Headless there is no
 portal backend implementing `org.freedesktop.portal.GlobalShortcuts` (GNOME 46 and plasma-less
 KWin 5.27), so the real result is `Unsupported`; it is reported as `SKIP`, not forced.
+
+## Phase 6 (notes)
+
+`phase6.sh` is sourced after `phase5.sh`. It starts `gnome-keyring-daemon --login` in the test session (a throwaway
+login keyring unlocked with a test password) and needs `gnome-keyring` and `libsecret-tools` (`secret-tool`); without
+them every Secret Service check prints `SKIP` with the reason and is not counted as a pass. The daemon runs with
+`MENEW_SECRET_CLEAR_SECS=3` (read only with `MENEW_TEST=1`), so the 30 s clear of a copied password takes 3 s.
+Test hooks: `__notes-create <text|secure|passwords> "<text with \n>"` (logs the id), `__notes-open [id]`,
+`__password-paste <index> <password|username>` (Enter or Alt+Enter on a row of the Passwords filter).
+It checks: a normal note with a `#tag` in `notes.json` and found in the palette; a password note whose value is in no plain
+file (`grep -r`) and is in the keyring (`secret-tool lookup application app.menew.Menew note <uuid>`); the Passwords
+filter; the copied value on the clipboard, not in the history, cleared after the delay only if still there; polkit
+(recorded: the policy is not installed in the test session, so the fallback runs; a real authentication agent
+does not exist headless, which is a `SKIP`); and the screenshot `docs/desktop-tests/<de>-notes.png`.

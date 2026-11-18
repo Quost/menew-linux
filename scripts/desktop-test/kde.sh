@@ -70,6 +70,8 @@ wait_for 10 grep -q 'notifyd ready' "$TEST_ROOT/notifyd.log" || fail "notificati
 export LC_ALL=C.UTF-8
 # enables the hidden `__select-clipboard|__pin-clipboard|__delete-clipboard` commands in the daemon
 export MENEW_TEST=1
+# shortens the 30 s clear of a copied secret (only with MENEW_TEST=1)
+export MENEW_SECRET_CLEAR_SECS=3
 
 # menew daemon (spawns the wl-paste watcher)
 "$MENEW_BIN" >"$MENEW_LOG" 2>&1 &
@@ -215,6 +217,8 @@ if [ "$PIPELINE_OK" = "1" ]; then
     : | STUB_DATA="$TEST_ROOT/hinted.png" PATH="$TEST_ROOT/fakebin2:$PATH" "$MENEW_BIN" __clipboard-push >/dev/null 2>&1 || true
     if wait_for 5 bash -c "[ \"\$(sqlite3 '$MENEW_DB_PATH' \"SELECT COUNT(*) FROM clipboard_entries WHERE kind='image'\")\" -gt $imgs_before ]"; then pass "control: the same helper path keeps the image without the hint"; else fail "control image not saved; the hint test is inconclusive"; fi
 else skip "Phase 5 checks need the wl-copy pipeline (see SKIP above)"; fi
+source "$HERE/phase6.sh"
+if [ "$PIPELINE_OK" = "1" ]; then phase6_checks; else skip "Phase 6 checks need the wl-copy pipeline (see SKIP above)"; fi
 
 # check 4: quit leaves no wl-paste
 "$MENEW_BIN" quit >/dev/null 2>&1 || true

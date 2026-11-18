@@ -9,7 +9,7 @@ use crate::strings::tr;
 pub const DEFAULT_MAX_ITEMS: usize = 300;
 pub const MIN_MAX_ITEMS: usize = 20;
 
-/// The chips above the list. The Mac also has "Passwords", which comes with the notes (Phase 6).
+/// The chips above the list, in the order of the Mac.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ClipFilter {
     #[default]
@@ -20,11 +20,12 @@ pub enum ClipFilter {
     File,
     Pinned,
     Snippets,
+    Passwords,
 }
 
 impl ClipFilter {
-    pub const ALL: [ClipFilter; 7] =
-        [ClipFilter::All, ClipFilter::Text, ClipFilter::Link, ClipFilter::Image, ClipFilter::File, ClipFilter::Pinned, ClipFilter::Snippets];
+    pub const ALL: [ClipFilter; 8] =
+        [ClipFilter::All, ClipFilter::Text, ClipFilter::Link, ClipFilter::Image, ClipFilter::File, ClipFilter::Pinned, ClipFilter::Snippets, ClipFilter::Passwords];
 
     pub fn id(self) -> &'static str {
         match self {
@@ -35,6 +36,7 @@ impl ClipFilter {
             ClipFilter::File => "file",
             ClipFilter::Pinned => "pinned",
             ClipFilter::Snippets => "snippets",
+            ClipFilter::Passwords => "passwords",
         }
     }
 
@@ -66,7 +68,7 @@ impl ClipFilter {
             ClipFilter::Image => e.kind == ClipKind::Image,
             ClipFilter::File => e.kind == ClipKind::File,
             ClipFilter::Pinned => e.is_pinned,
-            ClipFilter::Snippets => false,
+            ClipFilter::Snippets | ClipFilter::Passwords => false,
         }
     }
 }
@@ -185,8 +187,9 @@ mod tests {
         assert!(ClipFilter::Text.matches(&t("hello")));
         assert!(!ClipFilter::Snippets.matches(&t("hello")));
         assert_eq!(ClipFilter::All.next(), ClipFilter::Text);
-        assert_eq!(ClipFilter::Snippets.next(), ClipFilter::All);
-        assert_eq!(ClipFilter::All.prev(), ClipFilter::Snippets);
+        assert_eq!(ClipFilter::Snippets.next(), ClipFilter::Passwords);
+        assert_eq!(ClipFilter::Passwords.next(), ClipFilter::All);
+        assert_eq!(ClipFilter::All.prev(), ClipFilter::Passwords);
     }
 
     #[test]

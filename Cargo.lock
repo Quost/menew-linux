@@ -1025,6 +1025,7 @@ dependencies = [
 name = "menew-clipboard"
 version = "0.1.0-alpha.1"
 dependencies = [
+ "futures-util",
  "menew-core",
  "serde",
  "tempfile",

@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Your command palette and clipboard history, native on Linux.</b><br>
-  Command palette · Calculator and conversions · Clipboard history · Snippets · Timers and focus · Emoji · Script commands<br>
+  Command palette · Calculator and conversions · Clipboard history · Notes · Snippets · Timers and focus · Emoji · Script commands<br>
   Free, open source, native. No account, no telemetry.
 </p>
 
@@ -36,7 +36,7 @@
   </picture>
 </p>
 
-> **Status: not released yet.** Menew for Linux is the port of [Menew for Mac](https://github.com/Quost/menew), and only part of the Mac app exists here so far: the command palette and the clipboard history. The first release will come when the core of the Mac app is ported. [docs/parity.md](docs/parity.md) lists every Mac feature and its Linux status. Everything described below works today, on headless GNOME Shell 46 and KWin 5.27 sessions; it has not been tested on a real desktop yet.
+> **Status: not released yet.** Menew for Linux is the port of [Menew for Mac](https://github.com/Quost/menew), and only part of the Mac app exists here so far: the command palette, the clipboard history and notes. The first release will come when the core of the Mac app is ported. [docs/parity.md](docs/parity.md) lists every Mac feature and its Linux status. Everything described below works today, on headless GNOME Shell 46 and KWin 5.27 sessions; it has not been tested on a real desktop yet.
 
 ## Highlights
 
@@ -76,6 +76,10 @@ Text, links, images and files with instant search, filters, pins and a preview. 
     <img src="docs/assets/clipboard-snippets-light.png" width="420" alt="Snippets with variables">
   </picture>
 </p>
+
+### 📝 Notes: `menew notes`
+
+Many notes with `#tags`, search and Markdown (headings, lists, checklists you can tick, quotes, code, bold, italic, links), in the same three kinds as the Mac: **normal**, **protected** (the content goes to your keyring, GNOME Keyring or KWallet, and opening it asks for your password through polkit) and **passwords** (name and value rows, hidden values, an eye to show and a copy button). A copied password is marked as confidential, never enters the history and is cleared after 30 seconds. The clipboard has a **Passwords** filter: <kbd>Enter</kbd> pastes the password, <kbd>Alt</kbd> <kbd>Enter</kbd> the username. Notes also show up in the palette.
 
 ## Everything else
 
@@ -155,7 +159,7 @@ The language follows `LC_ALL` / `LANG`.
 
 </details>
 
-Not here yet (see [docs/parity.md](docs/parity.md)): Memory, recordings, notes, screenshots, window management, system monitor, on-device AI and agents. They are on the roadmap of the Mac app and will come to Linux as far as the platform allows.
+Not here yet (see [docs/parity.md](docs/parity.md)): Memory, recordings, screenshots, window management, system monitor, on-device AI and agents. They are on the roadmap of the Mac app and will come to Linux as far as the platform allows.
 
 ## Install
 
@@ -218,6 +222,7 @@ The app has **no telemetry, no analytics and no account**, and makes no network 
 - Reading the text of images runs `tesseract` locally; nothing is uploaded.
 - Your recent picks are stored in `~/.local/share/menew/recents.json` (item ids only, never copied text); scripts, quick links and world clocks live in `~/.local/share/menew/scripts` and `~/.config/menew/config.json`.
 - "Clear history" in the tray deletes every unpinned entry and the image files that go with them.
+- Notes live in `~/.local/share/menew/notes/notes.json` (the same format as the Mac). **Normal notes are plain text in that file.** Protected and password notes keep only their title there: the rest is in the Secret Service of your keyring (`application=app.menew.Menew`), never in a plain file. Opening one asks for your password through polkit; where the polkit policy is not installed (AppImage) or there is no authentication agent, the keyring unlocked at login is the only protection, and the notes window says so.
 - The optional paste simulation only writes a <kbd>Ctrl</kbd> <kbd>V</kbd> key press to `/dev/uinput`; it never reads keyboard input.
 
 ## FAQ

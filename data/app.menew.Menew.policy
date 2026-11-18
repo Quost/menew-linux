@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<!-- Asked by Menew before it opens a protected note or a password note: the password of the user (auth_self),
+     like Touch ID on the Mac. The content itself lives in the Secret Service (GNOME Keyring, KWallet). -->
+<policyconfig>
+  <vendor>Menew</vendor>
+  <vendor_url>https://menew.web.app</vendor_url>
+  <action id="app.menew.Menew.unlock-note">
+    <description>Open a protected note in Menew</description>
+    <description xml:lang="pt">Abrir uma nota protegida no Menew</description>
+    <description xml:lang="de">Eine geschützte Notiz in Menew öffnen</description>
+    <description xml:lang="es">Abrir una nota protegida en Menew</description>
+    <description xml:lang="zh_CN">在 Menew 中打开受保护的笔记</description>
+    <message>Authentication is required to open a protected note</message>
+    <message xml:lang="pt">É preciso confirmar a sua senha para abrir uma nota protegida</message>
+    <message xml:lang="de">Zum Öffnen einer geschützten Notiz ist eine Authentifizierung erforderlich</message>
+    <message xml:lang="es">Se necesita autenticación para abrir una nota protegida</message>
+    <message xml:lang="zh_CN">打开受保护的笔记需要验证身份</message>
+    <defaults>
+      <allow_any>auth_self</allow_any>
+      <allow_inactive>auth_self</allow_inactive>
+      <allow_active>auth_self</allow_active>
+    </defaults>
+  </action>
+</policyconfig>

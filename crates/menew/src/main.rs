@@ -47,6 +47,13 @@ enum Action {
     PasteNext,
     /// Test hook: show the clipboard list with this filter and search text, log it.
     ClipboardView(String, String),
+    /// Open the notes window.
+    ShowNotes,
+    /// Test hooks: create a note (`text`, `secure` or `passwords`, then the text), open one by id, or paste the
+    /// password or username of a row of the Passwords filter.
+    NotesCreate(String, String),
+    NotesOpen(Option<String>),
+    PasswordPaste(usize, bool),
     Quit,
 }
 
@@ -66,6 +73,8 @@ fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
         Action::PasteNext
     } else if args.iter().any(|a| a == "clipboard") {
         Action::ShowClipboard
+    } else if args.iter().any(|a| a == "notes") {
+        Action::ShowNotes
     } else if is_remote {
         Action::ShowPalette
     } else {
@@ -78,6 +87,15 @@ fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
 fn test_action(args: &[String]) -> Option<Action> {
     if let Some(p) = args.iter().position(|a| a == "__palette-query") {
         return args.get(p + 1).map(|t| Action::PaletteQuery(t.clone()));
+    }
+    if let Some(p) = args.iter().position(|a| a == "__notes-create") {
+        return Some(Action::NotesCreate(args.get(p + 1)?.clone(), args.get(p + 2).cloned().unwrap_or_default()));
+    }
+    if let Some(p) = args.iter().position(|a| a == "__notes-open") {
+        return Some(Action::NotesOpen(args.get(p + 1).cloned()));
+    }
+    if let Some(p) = args.iter().position(|a| a == "__password-paste") {
+        return Some(Action::PasswordPaste(args.get(p + 1)?.parse().ok()?, args.get(p + 2).map(|s| s == "username").unwrap_or(false)));
     }
     if let Some(p) = args.iter().position(|a| a == "__clipboard-view") {
         return args.get(p + 1).map(|f| Action::ClipboardView(f.clone(), args.get(p + 2).cloned().unwrap_or_default()));
@@ -307,7 +325,11 @@ fn run_gtk_app(args: Vec<String>) {
                 queue_ocr: Rc::new(move || s5.queue_ocr()),
             }
         };
-        let palette = menew_ui::PaletteWindow::create(application, db.clone(), Rc::clone(&state), Rc::clone(&push_status), hooks);
+        // the notes: content of the protected ones in the Secret Service, the user asked through polkit
+        let vault: Rc<dyn menew_core::notes::Vault> = Rc::new(menew_clipboard::secrets::SecretServiceVault);
+        let notes_store = menew_core::notes::NotesStore::load_default(vault);
+        let notes = menew_ui::notes_view::NotesApp::new(application, notes_store, Arc::new(menew_clipboard::secrets::PolkitAuthenticator));
+        let palette = menew_ui::PaletteWindow::create(application, db.clone(), Rc::clone(&state), Rc::clone(&push_status), hooks, notes);
         *p_startup.borrow_mut() = Some(Rc::clone(&palette));
         let db_tray = db.clone();
 
@@ -501,6 +523,34 @@ fn run_gtk_app(args: Vec<String>) {
                     palette.test_clipboard_view(&filter, &query);
                 }
             }
+            Action::ShowNotes => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    palette.notes().show();
+                }
+            }
+            Action::NotesCreate(kind, text) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    let text = text.replace("\\n", "\n");
+                    let id = palette.notes().test_create(&kind, &text);
+                    info!("Test hook: notes-create {} -> {:?}", kind, id);
+                }
+            }
+            Action::NotesOpen(id) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    let notes = palette.notes();
+                    let id = id.or_else(|| notes.store.borrow().notes.first().map(|n| n.id.clone()));
+                    match id {
+                        Some(id) => notes.open(&id),
+                        None => notes.show(),
+                    }
+                }
+            }
+            Action::PasswordPaste(index, username) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    let found = palette.test_password_paste(index, username);
+                    info!("Test hook: password-paste {} username={} -> found={}", index, username, found);
+                }
+            }
             Action::PaletteActivate(index) => {
                 if let Some(palette) = p_cmd.borrow().as_ref() {
                     let found = palette.test_activate(index);
@@ -599,6 +649,15 @@ mod tests {
             test_action(&v(&["__select-clipboard", "0"])),
             Some(Action::SelectClipboard(0))
         );
+    }
+
+    #[test]
+    fn notes_hooks_only_in_test_mode() {
+        let a = v(&["__notes-create", "text", "Shopping list phase6\\n#phase6tag\\nmilk and bread"]);
+        assert_eq!(decide(&a, true, true), Action::NotesCreate("text".into(), "Shopping list phase6\\n#phase6tag\\nmilk and bread".into()));
+        assert_eq!(decide(&a, true, false), Action::ShowPalette);
+        assert_eq!(decide(&v(&["__notes-open", "ID"]), true, true), Action::NotesOpen(Some("ID".into())));
+        assert_eq!(decide(&v(&["__password-paste", "0", "username"]), true, true), Action::PasswordPaste(0, true));
     }
 
     #[test]

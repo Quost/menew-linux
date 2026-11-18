@@ -100,6 +100,8 @@ wait_for 10 grep -q 'watcher ready' "$TEST_ROOT/watcher.log" || fail "StatusNoti
 export LC_ALL=C.UTF-8
 # enables the hidden `__select-clipboard|__pin-clipboard|__delete-clipboard` commands in the daemon
 export MENEW_TEST=1
+# shortens the 30 s clear of a copied secret (only with MENEW_TEST=1)
+export MENEW_SECRET_CLEAR_SECS=3
 
 # start menew (daemon)
 "$MENEW_BIN" >"$MENEW_LOG" 2>&1 &
@@ -204,6 +206,8 @@ de_pause_probe() {
     if grep -a -q 'Capture paused: the clipboard is not read' "$MENEW_LOG"; then pass "the daemon answered ShouldCapture=false while paused (daemon log)"; else fail "no 'Capture paused' line in the daemon log"; fi
 }
 phase5_checks
+source "$HERE/phase6.sh"
+phase6_checks
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "RESULT: all checks passed"; else echo "RESULT: $FAILS check(s) FAILED"; fi

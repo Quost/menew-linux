@@ -68,6 +68,8 @@ impl ClipHooks {
 
 #[cfg(target_os = "linux")]
 pub mod snapshot;
+#[cfg(target_os = "linux")]
+pub mod notes_view;
 
 #[cfg(target_os = "linux")]
 pub mod palette {
@@ -200,6 +202,9 @@ pub mod palette {
         scrolled: gtk4::ScrolledWindow,
         preview: gtk4::Box,
         visible_snippets: Rc<RefCell<Vec<Snippet>>>,
+        /// The password notes of the Passwords filter (only their titles are ever in them).
+        visible_passwords: Rc<RefCell<Vec<menew_core::notes::Note>>>,
+        notes: Rc<crate::notes_view::NotesApp>,
         /// Set while the widgets are changed by code, so their handlers do not run.
         syncing: Cell<bool>,
         thumbs: RefCell<HashMap<String, gdk::Texture>>,
@@ -227,17 +232,29 @@ pub mod palette {
             .unwrap_or(0.0)
     }
 
+    /// Snapshot mode never unlocks anything.
+    struct NoAuth;
+    impl menew_core::notes::Authenticator for NoAuth {
+        fn authenticate(&self) -> menew_core::notes::Auth {
+            menew_core::notes::Auth::Denied
+        }
+    }
+
     impl PaletteWindow {
-        pub fn create(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>, hooks: ClipHooks) -> Rc<Self> {
-            Self::build(app, db, state, on_state, hooks, DesktopScanner::scan_all(), false)
+        pub fn create(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>, hooks: ClipHooks, notes: Rc<crate::notes_view::NotesApp>) -> Rc<Self> {
+            Self::build(app, db, state, on_state, hooks, DesktopScanner::scan_all(), false, notes)
         }
 
         /// Palette for `menew --snapshot`: fixed apps, no scripts folder, no clipboard read, no real data.
+        /// Its notes live in memory only (no keyring, nothing read from disk).
         pub fn create_demo(app: &adw::Application, db: ClipboardDatabase, state: SharedState, apps: Vec<DesktopApp>) -> Rc<Self> {
-            Self::build(app, db, state, Rc::new(|| {}), ClipHooks::inert(), apps, true)
+            let store = menew_core::notes::NotesStore::in_memory(Rc::new(menew_core::notes::MemoryVault::default()));
+            let notes = crate::notes_view::NotesApp::new(app, store, std::sync::Arc::new(NoAuth));
+            Self::build(app, db, state, Rc::new(|| {}), ClipHooks::inert(), apps, true, notes)
         }
 
-        fn build(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>, hooks: ClipHooks, apps: Vec<DesktopApp>, demo: bool) -> Rc<Self> {
+        #[allow(clippy::too_many_arguments)]
+        fn build(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>, hooks: ClipHooks, apps: Vec<DesktopApp>, demo: bool, notes: Rc<crate::notes_view::NotesApp>) -> Rc<Self> {
             if let Some(display) = gdk::Display::default() {
                 let provider = gtk4::CssProvider::new();
                 provider.load_from_data(CSS);
@@ -467,6 +484,8 @@ pub mod palette {
                 scrolled,
                 preview,
                 visible_snippets: Rc::new(RefCell::new(Vec::new())),
+                visible_passwords: Rc::new(RefCell::new(Vec::new())),
+                notes,
                 syncing: Cell::new(false),
                 thumbs: RefCell::new(HashMap::new()),
             });
@@ -515,6 +534,12 @@ pub mod palette {
                     }
                     gdk::Key::Tab | gdk::Key::ISO_Left_Tab => {
                         self_key.set_mode(self_key.mode.get().toggled());
+                        glib::Propagation::Stop
+                    }
+                    gdk::Key::Return | gdk::Key::KP_Enter if alt && in_clipboard && self_key.filter.get() == ClipFilter::Passwords => {
+                        if let Some(i) = self_key.selected_index() {
+                            self_key.paste_password(i, true);
+                        }
                         glib::Propagation::Stop
                     }
                     gdk::Key::Return | gdk::Key::KP_Enter => {
@@ -623,7 +648,13 @@ pub mod palette {
                 }
             });
             let this = Rc::clone(self);
-            self.new_snippet_btn.connect_clicked(move |_| this.edit_snippet(None));
+            self.new_snippet_btn.connect_clicked(move |_| {
+                if this.filter.get() == ClipFilter::Passwords {
+                    this.notes.new_passwords();
+                } else {
+                    this.edit_snippet(None);
+                }
+            });
         }
 
         pub fn mode(&self) -> PaletteMode {
@@ -688,7 +719,14 @@ pub mod palette {
                 None => format!("{}  \u{b7}  {}", tr("queue_title", lang, &[]), tr("queue_hint", lang, &[])),
             };
             self.queue_text.set_label(&line);
-            self.new_snippet_btn.set_visible(clip && self.filter.get() == ClipFilter::Snippets);
+            let pw = self.filter.get() == ClipFilter::Passwords;
+            self.new_snippet_btn.set_visible(clip && (pw || self.filter.get() == ClipFilter::Snippets));
+            self.new_snippet_btn.set_tooltip_text(Some(&tr(if pw { "notes_new_passwords" } else { "snip_new" }, lang, &[])));
+            if clip {
+                let hint = if pw { tr("clip_hint_passwords", lang, &[]) } else { t("clipboard_hint").to_string() };
+                self.hint_label.set_label(&hint);
+                self.search_entry.set_placeholder_text(Some(&if pw { tr("clip_search_passwords", lang, &[]) } else { t("clipboard_placeholder").to_string() }));
+            }
             self.syncing.set(false);
         }
 
@@ -783,6 +821,7 @@ pub mod palette {
             self.items.borrow_mut().clear();
             self.visible_entries.borrow_mut().clear();
             self.visible_snippets.borrow_mut().clear();
+            self.visible_passwords.borrow_mut().clear();
             self.query_empty.set(query.trim().is_empty());
             *self.last_query.borrow_mut() = query.to_string();
 
@@ -795,6 +834,8 @@ pub mod palette {
             if total == 0 {
                 let text = if self.mode.get() == PaletteMode::Clipboard && self.filter.get() == ClipFilter::Snippets && query.trim().is_empty() {
                     tr("snip_none", current_language(), &[])
+                } else if self.mode.get() == PaletteMode::Clipboard && self.filter.get() == ClipFilter::Passwords && query.trim().is_empty() {
+                    tr("clip_none_passwords", current_language(), &[])
                 } else if self.mode.get() == PaletteMode::Clipboard && query.trim().is_empty() && self.filter.get() == ClipFilter::All {
                     t("clipboard_empty").to_string()
                 } else if self.mode.get() == PaletteMode::Clipboard {
@@ -837,7 +878,7 @@ pub mod palette {
         fn row_count(&self) -> usize {
             match self.mode.get() {
                 PaletteMode::Apps => self.items.borrow().len(),
-                PaletteMode::Clipboard => self.visible_entries.borrow().len() + self.visible_snippets.borrow().len(),
+                PaletteMode::Clipboard => self.visible_entries.borrow().len() + self.visible_snippets.borrow().len() + self.visible_passwords.borrow().len(),
             }
         }
 
@@ -871,6 +912,7 @@ pub mod palette {
             let paused = (self.hooks.is_paused)();
             let items = {
                 let state = self.state.borrow();
+                let notes_store = self.notes.store.borrow();
                 let apps = self.apps.borrow();
                 let ctx = PaletteContext {
                     lang,
@@ -891,6 +933,7 @@ pub mod palette {
                         queue_on: state.queue.is_on(),
                         queue_len: state.queue.len(),
                     },
+                    notes: &notes_store.notes,
                 };
                 let db = self.db.clone();
                 let clip_search = move |q: &str| -> Vec<ClipHit> {
@@ -940,6 +983,26 @@ pub mod palette {
         fn fill_clipboard(&self, clean_query: &str) {
             let lang = current_language();
             let filter = self.filter.get();
+
+            // the password notes: only their titles, the content stays in the keyring
+            if filter == ClipFilter::Passwords {
+                let found: Vec<menew_core::notes::Note> = {
+                    let store = self.notes.store.borrow();
+                    menew_core::notes::password_notes(&store.notes, clean_query, lang).into_iter().cloned().collect()
+                };
+                for n in &found {
+                    let row = adw::ActionRow::builder()
+                        .title(glib::markup_escape_text(&n.title(lang)))
+                        .subtitle("\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}\u{2022}")
+                        .title_lines(1)
+                        .subtitle_lines(1)
+                        .icon_name("dialog-password-symbolic")
+                        .build();
+                    self.list_box.append(&row);
+                }
+                *self.visible_passwords.borrow_mut() = found;
+                return;
+            }
 
             // the snippets are not history entries: their own list
             if filter == ClipFilter::Snippets {
@@ -1058,6 +1121,12 @@ pub mod palette {
             };
             let Some(idx) = self.selected_index() else { return };
             let n_entries = self.visible_entries.borrow().len();
+            if self.filter.get() == ClipFilter::Passwords {
+                if idx < self.visible_passwords.borrow().len() {
+                    self.preview.append(&label(&tr("pw_row_hint", lang, &[]), true, 2));
+                }
+                return;
+            }
             if idx >= n_entries {
                 let snip = self.visible_snippets.borrow().get(idx - n_entries).cloned();
                 if let Some(s) = snip {
@@ -1292,6 +1361,13 @@ pub mod palette {
                     }
                 }
                 ItemAction::PasteSnippet(id) => self.paste_snippet(&id, true),
+                ItemAction::OpenNote(id) => self.notes.open(&id),
+                ItemAction::NewNote => {
+                    self.notes.new_note();
+                }
+                ItemAction::NewPasswordsNote => {
+                    self.notes.new_passwords();
+                }
                 ItemAction::PauseClipboard(m) => self.pause_clipboard(m),
                 ItemAction::ResumeClipboard => self.resume_clipboard(),
                 ItemAction::ToggleQueue => self.toggle_queue(),
@@ -1459,6 +1535,8 @@ pub mod palette {
             let snippet = self.visible_snippets.borrow().get(index.wrapping_sub(n)).cloned();
             if let Some(s) = snippet {
                 self.paste_snippet(&s.id, true);
+            } else if self.filter.get() == ClipFilter::Passwords {
+                self.paste_password(index, false);
             }
         }
 
@@ -1890,6 +1968,35 @@ pub mod palette {
 
         /// Paste a snippet (or only copy it): ask its `{input:}` fields, fill in the variables, put it
         /// on the clipboard without keeping it in the history, and move the cursor to `{cursor}`.
+        pub fn notes(&self) -> &Rc<crate::notes_view::NotesApp> {
+            &self.notes
+        }
+
+        /// The password (or username) of the `index`-th row of the Passwords filter: asks the user, puts it on the
+        /// clipboard as a confidential value (cleared after 30 s) and pastes it into the previous app.
+        fn paste_password(self: &Rc<Self>, index: usize, username: bool) {
+            let id = self.visible_passwords.borrow().get(index).map(|n| n.id.clone());
+            let Some(id) = id else { return };
+            let this = Rc::clone(self);
+            self.notes.copy_password_field(&id, username, move |res| {
+                if res == Some(true) {
+                    this.finish_paste(0, menew_core::paste::FOCUS_DELAY_MS);
+                }
+            });
+        }
+
+        /// Test hook (`MENEW_TEST=1 menew __password-paste <index> <password|username>`): Enter or Alt+Enter on the
+        /// `index`-th row of the Passwords filter (shown first).
+        pub fn test_password_paste(self: &Rc<Self>, index: usize, username: bool) -> bool {
+            self.show_mode(PaletteMode::Clipboard);
+            self.set_filter(ClipFilter::Passwords);
+            let exists = index < self.visible_passwords.borrow().len();
+            if exists {
+                self.paste_password(index, username);
+            }
+            exists
+        }
+
         fn paste_snippet(self: &Rc<Self>, id: &str, paste: bool) {
             let Some(snip) = self.state.borrow().snippets.find(id).cloned() else { return };
             let fields = snippets::fields_in(&snip.text);
@@ -2023,7 +2130,8 @@ pub mod palette {
             let lang = current_language();
             let entries = self.visible_entries.borrow().clone();
             let snippets = self.visible_snippets.borrow().clone();
-            info!("Test hook: clipboard view filter={} query={:?} -> {} entries", self.filter.get().id(), query, entries.len() + snippets.len());
+            let passwords = self.visible_passwords.borrow().clone();
+            info!("Test hook: clipboard view filter={} query={:?} -> {} entries", self.filter.get().id(), query, entries.len() + snippets.len() + passwords.len());
             for (i, e) in entries.iter().enumerate().take(20) {
                 info!(
                     "Test hook: clip[{}] [{}] {} | pinned={} | source={} | ocr={}",
@@ -2037,6 +2145,9 @@ pub mod palette {
             }
             for (i, s) in snippets.iter().enumerate().take(20) {
                 info!("Test hook: snippet[{}] {} | {}", i, s.title, collapsed_preview(&s.text));
+            }
+            for (i, n) in passwords.iter().enumerate().take(20) {
+                info!("Test hook: password[{}] {}", i, n.title(lang));
             }
         }
 

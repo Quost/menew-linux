@@ -137,7 +137,7 @@ fn entries_filters_and_titles_match_the_spec() {
         };
         let mut e = ClipboardEntry::text_entry(1, &unescape(&r[4]), r[3] == "yes", 0);
         e.kind = kind;
-        let filters: Vec<&str> = ClipFilter::ALL.iter().filter(|f| **f != ClipFilter::Snippets && f.matches(&e)).map(|f| f.id()).collect();
+        let filters: Vec<&str> = ClipFilter::ALL.iter().filter(|f| **f != ClipFilter::Snippets && **f != ClipFilter::Passwords && f.matches(&e)).map(|f| f.id()).collect();
         let title = row_title(&e, lang_of(&r[1]));
         let color = hex_color(&e).map(|(a, b, c)| format!("{a},{b},{c}")).unwrap_or_else(|| "-".into());
         if filters.join(",") != r[5] || title != unescape(&r[6]) || color != r[7] {
@@ -384,6 +384,7 @@ fn palette_items_match_the_spec() {
                 queue_on: r[3] == "queue",
                 queue_len: if r[3] == "queue" { 2 } else { 0 },
             },
+            notes: &[],
         };
         let input = if r[4] == "(empty)" { String::new() } else { r[4].clone() };
         let out = results(&ctx, &input, &|_| vec![]);

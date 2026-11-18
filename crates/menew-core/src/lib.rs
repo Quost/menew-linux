@@ -15,6 +15,8 @@ mod emoji_data;
 pub mod focus;
 pub mod format;
 pub mod i18n;
+pub mod markdown;
+pub mod notes;
 pub mod palette;
 pub mod ocr;
 pub mod paste;
