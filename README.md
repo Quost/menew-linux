@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Your command palette and clipboard history, native on Linux.</b><br>
-  Command palette · Calculator and conversions · Clipboard history · Notes · Snippets · Timers and focus · Emoji · Script commands<br>
+  Command palette · Calculator and conversions · Clipboard history · Notes · Screenshots and QR codes · System monitor · Snippets · Timers and focus · Emoji · Script commands<br>
   Free, open source, native. No account, no telemetry.
 </p>
 
@@ -36,7 +36,7 @@
   </picture>
 </p>
 
-> **Status: early preview ([0.1.0-alpha.1](https://github.com/Quost/menew-linux/releases), for testers).** Menew for Linux is the port of [Menew for Mac](https://github.com/Quost/menew), and only part of the Mac app exists here so far: the command palette, the clipboard history and notes. The first release will come when the core of the Mac app is ported. [docs/parity.md](docs/parity.md) lists every Mac feature and its Linux status. Everything described below works today, on headless GNOME Shell 46 and KWin 5.27 sessions; it has not been tested on a real desktop yet.
+> **Status: early preview ([0.1.0-alpha.2](https://github.com/Quost/menew-linux/releases), for testers).** Menew for Linux is the port of [Menew for Mac](https://github.com/Quost/menew), and only part of the Mac app exists here so far: the command palette, the clipboard history, notes, screenshots, text from the screen and QR codes, and the system monitor. The first release will come when the core of the Mac app is ported. [docs/parity.md](docs/parity.md) lists every Mac feature and its Linux status. Everything described below works today, on headless GNOME Shell 46 and KWin 5.27 sessions; it has not been tested on a real desktop yet.
 
 ## Highlights
 
@@ -80,6 +80,41 @@ Text, links, images and files with instant search, filters, pins and a preview. 
 ### 📝 Notes: `menew notes`
 
 Many notes with `#tags`, search and Markdown (headings, lists, checklists you can tick, quotes, code, bold, italic, links), in the same three kinds as the Mac: **normal**, **protected** (the content goes to your keyring, GNOME Keyring or KWallet, and opening it asks for your password through polkit) and **passwords** (name and value rows, hidden values, an eye to show and a copy button). A copied password is marked as confidential, never enters the history and is cleared after 30 seconds. The clipboard has a **Passwords** filter: <kbd>Enter</kbd> pastes the password, <kbd>Alt</kbd> <kbd>Enter</kbd> the username. Notes also show up in the palette.
+
+### 📸 Screenshots: <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>S</kbd>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/capture-editor-dark.png">
+    <img src="docs/assets/capture-editor-light.png" width="640" alt="The annotation editor with a blurred card number, a box, an arrow and a text">
+  </picture>
+</p>
+
+Capture an area, a window or the whole screen (Menew asks the screenshot portal, so GNOME and KDE show their own picker), then **annotate** it with a pen, arrows, rectangles and text, **blur** sensitive data (the pixels are really pixelated, not just covered), undo, and **copy** it, **save** it (to your Desktop, as `Screenshot 2026-11-17 10.30.15.png`) or **drag** it into another app. **Copy text** reads the text in the capture. <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>T</kbd> copies the text of any area of the screen (with `tesseract`, on your computer). **QR codes**: read one from the screen (the content is copied, **links never open by themselves**) or show the QR code of the copied text, a link or your Wi-Fi so your phone can open or join it. The same things are in the palette (`screenshot`, `qr`), in the tray and in `menew capture`, `menew capture-text`.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/qr-code-dark.png">
+    <img src="docs/assets/qr-code-light.png" width="300" alt="The QR code of a link, to open it on the phone">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/qr-wifi-dark.png">
+    <img src="docs/assets/qr-wifi-light.png" width="300" alt="The QR code of a Wi-Fi network">
+  </picture>
+</p>
+
+### 📊 System monitor: `menew monitor`
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/monitor-dark.png">
+    <img src="docs/assets/monitor-light.png" width="420" alt="The system monitor: processor, memory, disk, network, battery and the top processes">
+  </picture>
+</p>
+
+CPU with a graph of the last 2 minutes, each core, the GPU where the driver reports it (AMD), **memory** split into apps, system and compressed with swap and a pressure badge, disk space, network speed with graphs, the battery with the time left and the **top processes by CPU and by memory**. Quit one with a click (SIGTERM); if it ignores that, a separate **Force Quit** button appears. Only your own processes are listed: the system and other users' are never offered. It opens from the tray, the palette ("system monitor") and `menew monitor`, and it reads the machine only while the window is open.
+
+To show metrics in the tray (CPU, memory, network, disk, battery, a CPU graph), put them in `~/.config/menew/config.json` until the settings window arrives: `{"monitor_tray_items": ["cpu", "ram", "net"]}`. KDE Plasma shows them as text in the panel; GNOME's AppIndicator shows only the icon, so there they are in the tooltip. History, temperatures, battery health and alerts are not here yet.
 
 ## Everything else
 
@@ -159,7 +194,7 @@ The language follows `LC_ALL` / `LANG`.
 
 </details>
 
-Not here yet (see [docs/parity.md](docs/parity.md)): Memory, recordings, screenshots, window management, system monitor, on-device AI and agents. They are on the roadmap of the Mac app and will come to Linux as far as the platform allows.
+Not here yet (see [docs/parity.md](docs/parity.md)): Memory, recordings, pinning a screenshot on the screen, screen recording, scrolling capture, asking about the screen, window management, on-device AI and agents. They are on the roadmap of the Mac app and will come to Linux as far as the platform allows.
 
 ## Install
 
@@ -203,6 +238,9 @@ cargo run -p menew
 | <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Space</kbd> | Open the command palette |
 | <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>V</kbd> | Open clipboard history |
 | <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>N</kbd> | Paste the next item of the paste queue |
+| <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>S</kbd> | Capture the screen and annotate it |
+| <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>T</kbd> | Copy the text of an area of the screen |
+| <kbd>Ctrl</kbd> <kbd>Z</kbd> / <kbd>Ctrl</kbd> <kbd>S</kbd> / <kbd>Ctrl</kbd> <kbd>C</kbd> | In the editor: undo / save / copy |
 | <kbd>Tab</kbd> | Switch between Apps and Clipboard in the palette |
 | <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>Enter</kbd> / <kbd>Esc</kbd> | Move / run or copy / close |
 | <kbd>Ctrl</kbd> <kbd>1</kbd>…<kbd>9</kbd> | Run the Nth result |
@@ -210,7 +248,7 @@ cargo run -p menew
 | <kbd>Ctrl</kbd> <kbd>K</kbd> | Actions of the selected clipboard entry (also right click) |
 | <kbd>Alt</kbd> <kbd>←</kbd> <kbd>→</kbd> | Previous / next clipboard filter |
 
-The global shortcuts use the GlobalShortcuts portal, available on KDE Plasma and GNOME 48+. On GNOME 45-47 create two custom shortcuts in Settings (Keyboard, Custom Shortcuts) that run `menew toggle` and `menew clipboard`.
+The global shortcuts use the GlobalShortcuts portal, available on KDE Plasma and GNOME 48+. On GNOME 45-47 create custom shortcuts in Settings (Keyboard, Custom Shortcuts) that run `menew toggle`, `menew clipboard`, `menew capture` and `menew capture-text`.
 
 ## Privacy
 
@@ -221,6 +259,8 @@ The app has **no telemetry, no analytics and no account**, and makes no network 
 - The second network request is the update check, the same idea as the Mac app's: on by default, switch it off with "Check for updates automatically" in the tray (or `"auto_update_check": false` in `~/.config/menew/config.json`). A few minutes after start and then every 24 hours Menew reads the list of releases of this repository from `api.github.com` and the `update.json` of the newest one with the system `curl`, and sends nothing but `User-Agent: Menew/<version>`: no identifier, no usage data. It never opens a window by itself: the tray icon gets a dot and a menu item "Update available". An update is installed only when you pick **Install and Relaunch**, and only after its size, SHA-256 and Ed25519 signature (key compiled into Menew) are checked; otherwise nothing is touched. `menew check-updates` does the check from a terminal. Nothing is requested in the screenshot mode.
 - Copies flagged by password managers (`x-kde-passwordManagerHint`, `CONCEALED` and similar) are never read, whatever they hold (text, image or files). While the capture is paused the clipboard is not read at all.
 - Reading the text of images runs `tesseract` locally; nothing is uploaded.
+- **Screenshots** are taken by your system (the screenshot portal). A capture stays in memory: the file the system writes is read and **deleted right away**, and the picture handed to `tesseract` is a file in your private runtime folder (`$XDG_RUNTIME_DIR/menew`) that is deleted as soon as it was read. A capture only leaves Menew when you copy it, save it or drag it. Copying it puts it in the clipboard history like any copied image. Reading a QR code only copies its text: **Menew never opens a link from a QR code**.
+- The system monitor reads `/proc` and `/sys` locally, only while its window is open or while you chose tray metrics (`monitor_tray_items`, off by default), and sends nothing anywhere. Quitting a process sends it a signal (SIGTERM, or SIGKILL when you press Force Quit).
 - Your recent picks are stored in `~/.local/share/menew/recents.json` (item ids only, never copied text); scripts, quick links and world clocks live in `~/.local/share/menew/scripts` and `~/.config/menew/config.json`.
 - "Clear history" in the tray deletes every unpinned entry and the image files that go with them.
 - Notes live in `~/.local/share/menew/notes/notes.json` (the same format as the Mac). **Normal notes are plain text in that file.** Protected and password notes keep only their title there: the rest is in the Secret Service of your keyring (`application=app.menew.Menew`), never in a plain file. Opening one asks for your password through polkit; where the polkit policy is not installed (AppImage) or there is no authentication agent, the keyring unlocked at login is the only protection, and the notes window says so.
@@ -241,7 +281,7 @@ GNOME's compositor (Mutter) does not let background apps read the clipboard on W
 GNOME has no tray by default. Install the AppIndicator extension (`sudo apt install gnome-shell-extension-appindicator` on Ubuntu and Debian, `sudo dnf install gnome-shell-extension-appindicator` on Fedora) and enable it with `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com`. KDE Plasma shows the tray icon out of the box.
 
 **The shortcut does nothing.**  
-Global shortcuts need the GlobalShortcuts portal (KDE Plasma, GNOME 48+). On GNOME 45-47 create two custom shortcuts that run `menew toggle` and `menew clipboard`.
+Global shortcuts need the GlobalShortcuts portal (KDE Plasma, GNOME 48+). On GNOME 45-47 create custom shortcuts that run `menew toggle`, `menew clipboard`, `menew capture` and `menew capture-text`.
 
 **Can Menew paste for me?**  
 By default Menew copies the entry and shows "Copied. Press Ctrl+V to paste". To let it press <kbd>Ctrl</kbd> <kbd>V</kbd> for you it needs write access to `/dev/uinput`. The packages **do not** install this; the rule is in `data/60-menew-uinput.rules`:

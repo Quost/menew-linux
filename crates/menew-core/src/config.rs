@@ -40,6 +40,8 @@ pub struct Config {
     pub clipboard_ocr: bool,
     /// Check for updates by itself, every 24 hours (`SUEnableAutomaticChecks`, on by default like the Mac).
     pub auto_update_check: bool,
+    /// Metrics shown in the tray Title and ToolTip, from `cpu cpuGraph ram net disk battery` (the Mac's `menuBarItems`). Empty (the default) samples nothing until the settings window of Phase 11 lets the user opt in.
+    pub monitor_tray_items: Vec<String>,
 }
 
 impl Default for Config {
@@ -54,6 +56,7 @@ impl Default for Config {
             clipboard_auto_delete_days: 0,
             clipboard_ocr: true,
             auto_update_check: true,
+            monitor_tray_items: Vec::new(),
         }
     }
 }

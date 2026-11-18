@@ -103,6 +103,11 @@ export MENEW_TEST=1
 # shortens the 30 s clear of a copied secret (only with MENEW_TEST=1)
 export MENEW_SECRET_CLEAR_SECS=3
 
+# Phase 10: the tray shows CPU, memory and disk (the choice lives in config.json until the settings window of Phase 11)
+mkdir -p "$XDG_CONFIG_HOME/menew"
+printf '{"monitor_tray_items": ["cpu", "ram", "disk"]}
+' > "$XDG_CONFIG_HOME/menew/config.json"
+
 # start menew (daemon)
 "$MENEW_BIN" >"$MENEW_LOG" 2>&1 &
 track $!
@@ -208,6 +213,10 @@ de_pause_probe() {
 phase5_checks
 source "$HERE/phase6.sh"
 phase6_checks
+source "$HERE/phase7.sh"
+phase7_checks
+source "$HERE/phase10.sh"
+phase10_checks
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "RESULT: all checks passed"; else echo "RESULT: $FAILS check(s) FAILED"; fi
