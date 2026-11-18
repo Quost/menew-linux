@@ -1,6 +1,8 @@
 #[cfg(target_os = "linux")]
 mod alerts;
 #[cfg(target_os = "linux")]
+mod portal;
+#[cfg(target_os = "linux")]
 use std::cell::RefCell;
 #[cfg(target_os = "linux")]
 use std::rc::Rc;
@@ -54,6 +56,25 @@ enum Action {
     NotesCreate(String, String),
     NotesOpen(Option<String>),
     PasswordPaste(usize, bool),
+    /// Capture an area or window (the system asks which), then edit it.
+    Capture,
+    /// Capture the whole screen, then edit it.
+    CaptureFull,
+    /// Capture an area and copy its text.
+    CaptureText,
+    /// Capture an area and copy the content of the QR code in it (a link is never opened).
+    QrScan,
+    /// Show the QR code of the copied text, or of the given text (test hook).
+    QrShow(Option<String>),
+    QrWifi,
+    /// Test hooks: use this image as the capture (`edit`, `text` or `qr`, then the PNG), run the export of the
+    /// editor on a PNG with marks (`in`, `out`, marks), save a PNG into a folder with the name of the Mac, write
+    /// the image of the QR code of a text.
+    CaptureFrom(String, String),
+    Annotate(String, String, String),
+    CaptureSave(String, String),
+    CaptureCopy(String, String),
+    QrImage(String, String),
     Quit,
 }
 
@@ -75,6 +96,18 @@ fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
         Action::ShowClipboard
     } else if args.iter().any(|a| a == "notes") {
         Action::ShowNotes
+    } else if args.iter().any(|a| a == "capture-full") {
+        Action::CaptureFull
+    } else if args.iter().any(|a| a == "capture-text") {
+        Action::CaptureText
+    } else if args.iter().any(|a| a == "capture") {
+        Action::Capture
+    } else if args.iter().any(|a| a == "qr-scan") {
+        Action::QrScan
+    } else if args.iter().any(|a| a == "qr-wifi") {
+        Action::QrWifi
+    } else if args.iter().any(|a| a == "qr-show") {
+        Action::QrShow(None)
     } else if is_remote {
         Action::ShowPalette
     } else {
@@ -87,6 +120,24 @@ fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
 fn test_action(args: &[String]) -> Option<Action> {
     if let Some(p) = args.iter().position(|a| a == "__palette-query") {
         return args.get(p + 1).map(|t| Action::PaletteQuery(t.clone()));
+    }
+    if let Some(p) = args.iter().position(|a| a == "__capture-from") {
+        return Some(Action::CaptureFrom(args.get(p + 1)?.clone(), args.get(p + 2)?.clone()));
+    }
+    if let Some(p) = args.iter().position(|a| a == "__annotate") {
+        return Some(Action::Annotate(args.get(p + 1)?.clone(), args.get(p + 2)?.clone(), args.get(p + 3).cloned().unwrap_or_default()));
+    }
+    if let Some(p) = args.iter().position(|a| a == "__capture-save") {
+        return Some(Action::CaptureSave(args.get(p + 1)?.clone(), args.get(p + 2)?.clone()));
+    }
+    if let Some(p) = args.iter().position(|a| a == "__capture-copy") {
+        return Some(Action::CaptureCopy(args.get(p + 1)?.clone(), args.get(p + 2).cloned().unwrap_or_default()));
+    }
+    if let Some(p) = args.iter().position(|a| a == "__qr-image") {
+        return Some(Action::QrImage(args.get(p + 1)?.clone(), args.get(p + 2)?.clone()));
+    }
+    if let Some(p) = args.iter().position(|a| a == "__qr-show") {
+        return Some(Action::QrShow(args.get(p + 1).cloned()));
     }
     if let Some(p) = args.iter().position(|a| a == "__notes-create") {
         return Some(Action::NotesCreate(args.get(p + 1)?.clone(), args.get(p + 2).cloned().unwrap_or_default()));
@@ -329,7 +380,22 @@ fn run_gtk_app(args: Vec<String>) {
         let vault: Rc<dyn menew_core::notes::Vault> = Rc::new(menew_clipboard::secrets::SecretServiceVault);
         let notes_store = menew_core::notes::NotesStore::load_default(vault);
         let notes = menew_ui::notes_view::NotesApp::new(application, notes_store, Arc::new(menew_clipboard::secrets::PolkitAuthenticator));
-        let palette = menew_ui::PaletteWindow::create(application, db.clone(), Rc::clone(&state), Rc::clone(&push_status), hooks, notes);
+        // the screen: the system takes the capture (screenshot portal), the answer comes back to the GTK thread
+        let rt_portal = Arc::clone(&rt_startup);
+        let portal: menew_ui::screen::Portal = Rc::new(move |interactive, done| {
+            let (tx, rx) = tokio::sync::oneshot::channel();
+            rt_portal.spawn(async move {
+                let _ = tx.send(portal::screenshot(interactive).await);
+            });
+            glib::spawn_future_local(async move {
+                match rx.await {
+                    Ok(result) => done(result),
+                    Err(_) => done(Err("the portal request ended without an answer".into())),
+                }
+            });
+        });
+        let screen = menew_ui::screen::ScreenApp::new(application, portal);
+        let palette = menew_ui::PaletteWindow::create(application, db.clone(), Rc::clone(&state), Rc::clone(&push_status), hooks, notes, screen);
         *p_startup.borrow_mut() = Some(Rc::clone(&palette));
         let db_tray = db.clone();
 
@@ -440,6 +506,9 @@ fn run_gtk_app(args: Vec<String>) {
                         p_tray.queue_changed();
                     }
                     TrayCommand::PasteNext => p_tray.paste_next(),
+                    TrayCommand::Capture => p_tray.screen().capture(menew_ui::screen::Purpose::Edit, true),
+                    TrayCommand::CaptureText => p_tray.screen().capture(menew_ui::screen::Purpose::Text, true),
+                    TrayCommand::ScanQr => p_tray.screen().capture(menew_ui::screen::Purpose::Qr, true),
                     TrayCommand::Quit => app_handle.quit(),
                 }
             }
@@ -452,6 +521,8 @@ fn run_gtk_app(args: Vec<String>) {
                     ShortcutEvent::TogglePalette => p_short.toggle(),
                     ShortcutEvent::ToggleClipboard => p_short.toggle_mode(PaletteMode::Clipboard),
                     ShortcutEvent::PasteNext => p_short.paste_next(),
+                    ShortcutEvent::Capture => p_short.screen().capture(menew_ui::screen::Purpose::Edit, true),
+                    ShortcutEvent::CaptureText => p_short.screen().capture(menew_ui::screen::Purpose::Text, true),
                 }
             }
         });
@@ -557,6 +628,76 @@ fn run_gtk_app(args: Vec<String>) {
                     info!("Test hook: activate palette result {} -> found={}", index, found);
                 }
             }
+            Action::Capture | Action::CaptureFull | Action::CaptureText | Action::QrScan => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    use menew_ui::screen::Purpose;
+                    let (purpose, interactive) = match action {
+                        Action::CaptureFull => (Purpose::Edit, false),
+                        Action::CaptureText => (Purpose::Text, true),
+                        Action::QrScan => (Purpose::Qr, true),
+                        _ => (Purpose::Edit, true),
+                    };
+                    palette.screen().capture(purpose, interactive);
+                }
+            }
+            Action::QrShow(text) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    palette.screen().show_qr(text, false);
+                    if test_mode {
+                        // the payload of the window, read after the clipboard had time to fill it
+                        let screen = Rc::clone(palette.screen());
+                        glib::timeout_add_local_once(std::time::Duration::from_millis(600), move || {
+                            info!("Test hook: QR window payload={:?}", screen.qr_payload());
+                        });
+                    }
+                }
+            }
+            Action::QrWifi => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    palette.screen().show_qr(None, true);
+                }
+            }
+            Action::CaptureFrom(purpose, file) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    use menew_ui::screen::Purpose;
+                    let purpose = match purpose.as_str() {
+                        "text" => Purpose::Text,
+                        "qr" => Purpose::Qr,
+                        _ => Purpose::Edit,
+                    };
+                    // the image is the test's own file: it is kept
+                    palette.screen().open_file(purpose, std::path::Path::new(&file), false);
+                    info!("Test hook: capture-from {:?} {}", purpose, file);
+                }
+            }
+            Action::Annotate(input, output, marks) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    match palette.screen().test_annotate(std::path::Path::new(&input), std::path::Path::new(&output), &marks) {
+                        Ok(()) => info!("Test hook: annotate ok"),
+                        Err(e) => warn!("Test hook: annotate failed: {}", e),
+                    }
+                }
+            }
+            Action::CaptureSave(input, dir) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    match palette.screen().test_save(std::path::Path::new(&input), std::path::Path::new(&dir)) {
+                        Ok(path) => info!("Test hook: capture-save ok {}", path.display()),
+                        Err(e) => warn!("Test hook: capture-save failed: {}", e),
+                    }
+                }
+            }
+            Action::CaptureCopy(input, marks) => {
+                if let Some(palette) = p_cmd.borrow().as_ref() {
+                    match palette.screen().test_copy(std::path::Path::new(&input), &marks) {
+                        Ok(()) => info!("Test hook: capture-copy ok"),
+                        Err(e) => warn!("Test hook: capture-copy failed: {}", e),
+                    }
+                }
+            }
+            Action::QrImage(payload, output) => match menew_ui::screen::ScreenApp::test_qr_image(&payload, std::path::Path::new(&output)) {
+                Ok(()) => info!("Test hook: qr-image ok"),
+                Err(e) => warn!("Test hook: qr-image failed: {}", e),
+            },
             Action::ShowPalette => {
                 if let Some(palette) = p_cmd.borrow().as_ref() {
                     palette.show();
@@ -670,6 +811,29 @@ mod tests {
         assert_eq!(decide(&v(&["__palette-activate", "0"]), true, true), Action::PaletteActivate(0));
         assert_eq!(decide(&v(&["__palette-activate", "x"]), true, true), Action::ShowPalette);
         assert_eq!(decide(&v(&["__palette-query"]), true, true), Action::ShowPalette);
+    }
+
+    #[test]
+    fn the_screen_commands_and_their_hooks() {
+        assert_eq!(decide(&v(&["capture"]), true, false), Action::Capture);
+        assert_eq!(decide(&v(&["capture-full"]), true, false), Action::CaptureFull);
+        assert_eq!(decide(&v(&["capture-text"]), true, false), Action::CaptureText);
+        assert_eq!(decide(&v(&["qr-scan"]), true, false), Action::QrScan);
+        assert_eq!(decide(&v(&["qr-show"]), true, false), Action::QrShow(None));
+        assert_eq!(decide(&v(&["qr-wifi"]), true, false), Action::QrWifi);
+        // the hooks only exist with MENEW_TEST=1
+        let hook = v(&["__capture-from", "qr", "/tmp/a.png"]);
+        assert_eq!(decide(&hook, true, true), Action::CaptureFrom("qr".into(), "/tmp/a.png".into()));
+        assert_eq!(decide(&hook, true, false), Action::ShowPalette);
+        assert_eq!(decide(&v(&["__annotate", "a.png", "b.png", "blur:1,1,5,5"]), true, true), Action::Annotate("a.png".into(), "b.png".into(), "blur:1,1,5,5".into()));
+        assert_eq!(decide(&v(&["__capture-save", "a.png", "/tmp"]), true, true), Action::CaptureSave("a.png".into(), "/tmp".into()));
+        assert_eq!(decide(&v(&["__capture-copy", "a.png", "blur:1,1,5,5"]), true, true), Action::CaptureCopy("a.png".into(), "blur:1,1,5,5".into()));
+        assert_eq!(decide(&v(&["__qr-image", "text", "o.png"]), true, true), Action::QrImage("text".into(), "o.png".into()));
+        assert_eq!(decide(&v(&["__qr-show"]), true, true), Action::QrShow(None));
+        assert_eq!(decide(&v(&["__qr-show", "abc"]), true, true), Action::QrShow(Some("abc".into())));
+        // a word that is the name of a command stays text for a hook
+        assert_eq!(decide(&v(&["__qr-show", "capture"]), true, true), Action::QrShow(Some("capture".into())));
+        assert_eq!(decide(&v(&["__qr-show", "capture"]), true, false), Action::Capture);
     }
 
     #[test]

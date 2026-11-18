@@ -208,6 +208,8 @@ de_pause_probe() {
 phase5_checks
 source "$HERE/phase6.sh"
 phase6_checks
+source "$HERE/phase7.sh"
+phase7_checks
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "RESULT: all checks passed"; else echo "RESULT: $FAILS check(s) FAILED"; fi

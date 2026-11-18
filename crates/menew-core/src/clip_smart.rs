@@ -15,6 +15,8 @@ pub enum SmartRun {
     Open(String),
     /// Put this text on the clipboard.
     Copy(String),
+    /// Show the QR code of this text in its window (`QRCode.show(text:)`).
+    ShowQr(String),
 }
 
 impl SmartRun {
@@ -23,6 +25,7 @@ impl SmartRun {
         match self {
             SmartRun::Open(u) => format!("open:{u}"),
             SmartRun::Copy(t) => format!("copy:{t}"),
+            SmartRun::ShowQr(t) => format!("qr:{t}"),
         }
     }
 }
@@ -178,7 +181,16 @@ fn detect(text: &str, lang: Language, region: Option<&str>) -> Vec<SmartAction> 
                     subtitle: url.clone(),
                     icon: "web-browser-symbolic",
                     keywords: "abrir link open url \u{f6}ffnen abrir \u{6253}\u{5f00}".into(),
-                    run: SmartRun::Open(url),
+                    run: SmartRun::Open(url.clone()),
+                });
+                // `SmartClip.actions`: after the link, the QR code of it for the phone
+                out.push(SmartAction {
+                    id: "qr".into(),
+                    title: tr("smart_qr", lang, &[]),
+                    subtitle: tr("qr_phone_sub", lang, &[]),
+                    icon: "view-grid-symbolic",
+                    keywords: "qr qrcode celular phone".into(),
+                    run: SmartRun::ShowQr(url),
                 });
             }
         }
@@ -558,8 +570,8 @@ mod tests {
     #[test]
     fn mail_link_and_address() {
         assert_eq!(ids("hello@example.com"), vec!["mail"]);
-        assert_eq!(ids("https://github.com/Quost/menew"), vec!["link"]);
-        assert_eq!(ids("www.example.org"), vec!["link"]);
+        assert_eq!(ids("https://github.com/Quost/menew"), vec!["link", "qr"]);
+        assert_eq!(ids("www.example.org"), vec!["link", "qr"]);
         assert!(ids("file.txt").is_empty());
         assert_eq!(ids("Av. Paulista, 1578 - Bela Vista, S\u{e3}o Paulo"), vec!["address"]);
         assert!(ids("I walked down the street yesterday").is_empty());

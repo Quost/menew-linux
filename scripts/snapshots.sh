@@ -98,7 +98,7 @@ for lang in "$@"; do
         *) fail "unknown language '$lang'"; continue ;;
     esac
     mkdir -p "$out"
-    rm -f "$out"/palette*-light.png "$out"/palette*-dark.png "$out"/clipboard*-light.png "$out"/clipboard*-dark.png
+    rm -f "$out"/palette*-light.png "$out"/palette*-dark.png "$out"/clipboard*-light.png "$out"/clipboard*-dark.png "$out"/capture*-light.png "$out"/capture*-dark.png "$out"/qr*-light.png "$out"/qr*-dark.png
     if "$MENEW_BIN" --snapshot "$out" -language "$lang" >"$TEST_ROOT/snap-$lang.log" 2>&1; then
         n="$(grep -c '^snapshot: ' "$TEST_ROOT/snap-$lang.log" || true)"
         pass "menew --snapshot -language $lang wrote $n images to ${out#"$REPO_ROOT"/}"

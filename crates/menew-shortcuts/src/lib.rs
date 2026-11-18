@@ -7,6 +7,10 @@ pub enum ShortcutEvent {
     ToggleClipboard,
     /// Paste the next item of the paste queue.
     PasteNext,
+    /// Capture the screen (area or window) and annotate it (the Mac's Ctrl+Option+Cmd+S).
+    Capture,
+    /// Capture an area and copy the text in it (the Mac's Ctrl+Option+Cmd+T).
+    CaptureText,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,10 +68,16 @@ mod linux_impl {
             NewShortcut::new("paste_next", menew_core::t("shortcut_paste_next_desc"))
                 .preferred_trigger(Some("Control+Alt+N"));
 
+        let lang = menew_core::current_language();
+        let capture_shortcut = NewShortcut::new("capture", menew_core::strings::tr("shortcut_capture_desc", lang, &[]))
+            .preferred_trigger(Some("Control+Alt+Shift+S"));
+        let capture_text_shortcut = NewShortcut::new("capture_text", menew_core::strings::tr("shortcut_capture_text_desc", lang, &[]))
+            .preferred_trigger(Some("Control+Alt+Shift+T"));
+
         let response = match global_shortcuts
             .bind_shortcuts(
                 &session,
-                &[shortcut, clipboard_shortcut, paste_next_shortcut],
+                &[shortcut, clipboard_shortcut, paste_next_shortcut, capture_shortcut, capture_text_shortcut],
                 Default::default(),
             )
             .await
@@ -111,6 +121,12 @@ mod linux_impl {
                     "paste_next" => {
                         let _ = tx.send(ShortcutEvent::PasteNext);
                     }
+                    "capture" => {
+                        let _ = tx.send(ShortcutEvent::Capture);
+                    }
+                    "capture_text" => {
+                        let _ = tx.send(ShortcutEvent::CaptureText);
+                    }
                     _ => {}
                 }
             }
@@ -145,6 +161,13 @@ mod linux_impl {
         eprintln!("     Name:     Menew Paste Next");
         eprintln!("     Command:  menew paste-next");
         eprintln!("     Shortcut: Ctrl+Alt+N");
+        eprintln!("   And for the screen, two more:");
+        eprintln!("     Name:     Menew Capture");
+        eprintln!("     Command:  menew capture");
+        eprintln!("     Shortcut: Ctrl+Alt+Shift+S");
+        eprintln!("     Name:     Menew Text from Screen");
+        eprintln!("     Command:  menew capture-text");
+        eprintln!("     Shortcut: Ctrl+Alt+Shift+T");
         eprintln!("====================================================================");
         eprintln!();
     }
