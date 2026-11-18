@@ -24,7 +24,7 @@
 
 <p align="center">
   <a href="https://menew.web.app/linux?ref=github"><b>Website</b></a> ·
-  <a href="https://github.com/Quost/menew-linux/releases"><b>Download</b></a> (no release yet) ·
+  <a href="https://github.com/Quost/menew-linux/releases"><b>Download</b></a> (early preview) ·
   <a href="CONTRIBUTING.md"><b>Contribute</b></a> ·
   <a href="https://github.com/Quost/menew"><b>Mac app</b></a>
 </p>
@@ -36,7 +36,7 @@
   </picture>
 </p>
 
-> **Status: not released yet.** Menew for Linux is the port of [Menew for Mac](https://github.com/Quost/menew), and only part of the Mac app exists here so far: the command palette, the clipboard history and notes. The first release will come when the core of the Mac app is ported. [docs/parity.md](docs/parity.md) lists every Mac feature and its Linux status. Everything described below works today, on headless GNOME Shell 46 and KWin 5.27 sessions; it has not been tested on a real desktop yet.
+> **Status: early preview ([0.1.0-alpha.1](https://github.com/Quost/menew-linux/releases), for testers).** Menew for Linux is the port of [Menew for Mac](https://github.com/Quost/menew), and only part of the Mac app exists here so far: the command palette, the clipboard history and notes. The first release will come when the core of the Mac app is ported. [docs/parity.md](docs/parity.md) lists every Mac feature and its Linux status. Everything described below works today, on headless GNOME Shell 46 and KWin 5.27 sessions; it has not been tested on a real desktop yet.
 
 ## Highlights
 
