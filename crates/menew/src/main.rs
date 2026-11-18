@@ -867,7 +867,7 @@ mod tests {
 
     #[test]
     fn version_line_has_the_alpha_version() {
-        assert_eq!(version_line(), "menew 0.1.0-alpha.1");
+        assert_eq!(version_line(), "menew 0.1.0-alpha.2");
     }
 
     #[test]

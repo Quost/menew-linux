@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.1.0-alpha.2
+
+**Early preview for testers.** Screenshots with annotations, text from the screen, QR codes and the system monitor join the command palette, the clipboard history and notes. If you installed 0.1.0-alpha.1, Menew offers this update by itself.
+
+### What is new
+
+- **Screenshots** (`Ctrl+Alt+Shift+S`, `menew capture`, the palette or the tray): capture an area, a window or the whole screen (the system takes the picture through the screenshot portal and shows its own picker), then annotate it with a pen, arrows, rectangles and text, **blur** sensitive data (the pixels are really pixelated), undo, copy, save to your Desktop as `Screenshot <date>.png`, or drag it into another app. The file the portal writes is deleted right after it is read.
+- **Copy text from the screen** (`Ctrl+Alt+Shift+T`, `menew capture-text`): needs `tesseract`.
+- **QR codes**: read one from the screen (the content is copied, a link is never opened), and show the QR code of the copied text, a link or your Wi-Fi.
+- **System monitor** (`menew monitor`, the palette or the tray): CPU with a graph and each core, GPU (AMD), memory with swap and pressure, disk, network speed, battery with time left, and the top processes by CPU and by memory with one-click quit (SIGTERM, then an explicit Force Quit; system and other users' processes are never offered). It samples only while its window is open. Metrics can also go in the tray (`monitor_tray_items` in `config.json`; text in the panel on KDE only, tooltip on GNOME).
+
+### Not there yet
+
+- Pinning a screenshot on the screen, screen recording, scrolling capture and asking about the screen.
+- System monitor history, temperatures and fans, battery health and alerts.
+- Window management, quick actions, Memory and on-device AI.
+
+### Known limitations
+
+- The screenshot portal and its picker were not tested on a real desktop yet, and neither was dragging a capture out of the editor into another app. Everything was tested only on headless GNOME Shell 46 and KWin 5.27 sessions (Ubuntu 24.04).
+- Global shortcuts need the GlobalShortcuts portal (KDE Plasma, GNOME 48+). On GNOME 45 to 47, create custom shortcuts that run `menew toggle`, `menew clipboard`, `menew paste-next`, `menew capture` and `menew capture-text`.
+- On GNOME, the clipboard history needs the bundled GNOME Shell extension, and the tray icon needs the AppIndicator extension.
+- Pasting into the app you came from needs write access to `/dev/uinput` (optional, see the README); without it Menew copies and tells you to press Ctrl+V.
+- Wayland first; X11 is best effort.
+
+### Install
+
+- **Debian / Ubuntu 24.04+ (.deb)**: `sudo apt install ./menew_<version>_amd64.deb`. The GNOME extension is installed but not enabled: run `gnome-extensions enable menew-bridge@menew.web.app` and log in again.
+- **Any distro (AppImage)**: `chmod +x Menew-<version>-x86_64.AppImage && ./Menew-<version>-x86_64.AppImage`.
+- Check downloads against `SHA256SUMS`.
+
 ## 0.1.0-alpha.1
 
 **Early preview for testers.** This is the first build of Menew for Linux, the port of [Menew for Mac](https://github.com/Quost/menew). It has the command palette, the clipboard history and notes; the rest of the core of the Mac app (screenshots, window management, quick actions, system monitor and the Menew window) is still being ported, see [docs/parity.md](https://github.com/Quost/menew-linux/blob/main/docs/parity.md). Please try it on your GNOME or KDE desktop and [report what breaks](https://github.com/Quost/menew-linux/issues/new/choose).
