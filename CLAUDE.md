@@ -7,7 +7,7 @@ Native Linux productivity utility built in Rust (GTK4 + Libadwaita). Separate re
 ## Core Principles (Strict - Never Violate)
 
 1. **No Telemetry or Analytics, Ever**: No tracking, no phone-home, no silent network requests.
-2. **Minimal Network Activity**: No network calls except ones the user explicitly initiates (e.g. currency conversion or updates).
+2. **Minimal Network Activity**: No network calls except ones the user explicitly initiates (e.g. currency conversion) and the update check, which is the one allowed exception, like the Mac's Sparkle: on by default, with a toggle (`auto_update_check` in `config.json` and the tray), every 24 hours, never in `--snapshot` or under `MENEW_TEST=1` without `MENEW_UPDATE_FEED`. It only reads the GitHub release listing and `update.json` and sends nothing but `User-Agent: Menew/<version>`. Updates are installed only after the size, SHA-256 and Ed25519 signature check out (`docs/updates-spec.md`).
 3. **Minimal Dependencies**: Prefer standard system libraries, official GTK/Libadwaita bindings, and direct D-Bus protocols.
 4. **Localization (i18n)**: Every single UI string must be translatable across 5 languages: English (`en`), Portuguese (`pt`), German (`de`), Spanish (`es`), and Chinese (`zh`).
 5. **English Commits**: Conventional Commits in English (e.g., `feat(palette): ...`, `fix(clipboard): ...`).
@@ -26,6 +26,7 @@ Native Linux productivity utility built in Rust (GTK4 + Libadwaita). Separate re
   - On GNOME Wayland: Mutter blocks background clipboard reads. Clipboard history requires the Menew GNOME Shell Extension, which communicates with the daemon over D-Bus (`org.menew.ClipboardService`).
 - **Virtual Paste Simulation**:
   - `uinput` (`/dev/uinput`) or `org.freedesktop.portal.RemoteDesktop` (`libei`).
+- **Updates**: `crates/menew-core/src/updates.rs` (feed, semver, verification, install) and `crates/menew/src/updater.rs` (schedule, tray dot, window, restart). Signed with a Linux-only Ed25519 key: public key in `UPDATE_PUBLIC_KEY`, private key in the `MENEW_UPDATE_SIGNING_KEY` secret, used by `scripts/make-update-json.sh` in the `Release` workflow (which refuses to publish without it).
 - **Storage**: Local SQLite database via `rusqlite` with the `bundled` feature flag.
 - **Packaging (Planned)**: AppImage, `.deb`, and AUR first. Flatpak sandboxing is fundamentally incompatible with global background clipboard capture and window activation without extensive overrides.
 - **Local AI (Planned)**: Connect via HTTP REST API to an already installed local Ollama instance. Do not bundle heavy C++ runtimes like llama.cpp.

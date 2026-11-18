@@ -11,6 +11,12 @@ pub enum TrayCommand {
     TogglePause,
     /// Paste the next item of the paste queue.
     PasteNext,
+    /// "Check for Updates…" (or show the update already found).
+    CheckUpdates,
+    /// Show the window of the update that was found.
+    ShowUpdate,
+    /// Turn the automatic update check on or off.
+    ToggleAutoUpdate,
     Quit,
 }
 
@@ -26,6 +32,10 @@ pub struct TrayStatus {
     pub paused: bool,
     /// Items waiting in the paste queue (0 also when the queue is off).
     pub queue: usize,
+    /// Version of an update found and not installed yet: the icon gets a dot and the menu an item.
+    pub update: Option<String>,
+    /// The automatic update check is on.
+    pub auto_update: bool,
 }
 
 impl TrayStatus {
@@ -68,6 +78,23 @@ mod linux_impl {
             }
         }
 
+        fn status(&self) -> ksni::Status {
+            // the "gentle reminder": a dot on the icon, no window
+            if self.status.update.is_some() {
+                ksni::Status::NeedsAttention
+            } else {
+                ksni::Status::Active
+            }
+        }
+
+        fn overlay_icon_name(&self) -> String {
+            if self.status.update.is_some() { "software-update-available-symbolic".to_string() } else { String::new() }
+        }
+
+        fn attention_icon_name(&self) -> String {
+            "menew-symbolic".to_string()
+        }
+
         fn icon_name(&self) -> String {
             // Prefer custom app icon if installed in hicolor, fallback to standard symbolic
             "menew-symbolic".to_string()
@@ -80,8 +107,27 @@ mod linux_impl {
             let tx_pause = self.tx.clone();
             let tx_next = self.tx.clone();
             let tx_quit = self.tx.clone();
+            let tx_check = self.tx.clone();
+            let tx_show = self.tx.clone();
+            let tx_auto = self.tx.clone();
+            let lang = menew_core::current_language();
 
-            vec![
+            let mut items: Vec<MenuItem<Self>> = vec![];
+            if let Some(version) = &self.status.update {
+                items.push(
+                    StandardItem {
+                        label: menew_core::strings::tr("upd_available_tray", lang, &[version]),
+                        activate: Box::new(move |_| {
+                            info!("Tray: update window requested");
+                            let _ = tx_show.send(TrayCommand::ShowUpdate);
+                        }),
+                        ..Default::default()
+                    }
+                    .into(),
+                );
+                items.push(MenuItem::Separator);
+            }
+            items.extend(vec![
                 StandardItem {
                     label: menew_core::t("tray_open_palette").to_string(),
                     activate: Box::new(move |_| {
@@ -144,6 +190,25 @@ mod linux_impl {
                     ..Default::default()
                 }
                 .into(),
+                StandardItem {
+                    label: menew_core::strings::tr("upd_check", lang, &[]),
+                    activate: Box::new(move |_| {
+                        info!("Tray: check for updates requested");
+                        let _ = tx_check.send(TrayCommand::CheckUpdates);
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+                CheckmarkItem {
+                    label: menew_core::strings::tr("upd_auto", lang, &[]),
+                    checked: self.status.auto_update,
+                    activate: Box::new(move |_this: &mut Self| {
+                        info!("Tray: automatic update check toggled");
+                        let _ = tx_auto.send(TrayCommand::ToggleAutoUpdate);
+                    }),
+                    ..Default::default()
+                }
+                .into(),
                 MenuItem::Separator,
                 StandardItem {
                     label: menew_core::t("tray_quit").to_string(),
@@ -154,7 +219,8 @@ mod linux_impl {
                     ..Default::default()
                 }
                 .into(),
-            ]
+            ]);
+            items
         }
     }
 

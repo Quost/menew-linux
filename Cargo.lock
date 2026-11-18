@@ -234,6 +234,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ed25519-compact"
+version = "2.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9547879431a90e352a35863a54416d92898a787b9af09e6ae2e09a96bd78be80"
+
+[[package]]
 name = "endi"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1040,6 +1046,7 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "chrono",
  "dirs",
+ "ed25519-compact",
  "libc",
  "rusqlite",
  "serde",

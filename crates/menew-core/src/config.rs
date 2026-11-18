@@ -38,6 +38,8 @@ pub struct Config {
     pub clipboard_auto_delete_days: u32,
     /// Read the text of copied images with tesseract (`clipboardOCR`, on by default).
     pub clipboard_ocr: bool,
+    /// Check for updates by itself, every 24 hours (`SUEnableAutomaticChecks`, on by default like the Mac).
+    pub auto_update_check: bool,
 }
 
 impl Default for Config {
@@ -51,6 +53,7 @@ impl Default for Config {
             clipboard_max_items: crate::clip_item::DEFAULT_MAX_ITEMS,
             clipboard_auto_delete_days: 0,
             clipboard_ocr: true,
+            auto_update_check: true,
         }
     }
 }
@@ -139,6 +142,17 @@ mod tests {
         assert_eq!(Config::load_from(&path).paste_mode, PasteMode::Auto);
         std::fs::write(&path, r#"{"paste_mode": "copy-only"}"#).unwrap();
         assert_eq!(Config::load_from(&path).paste_mode, PasteMode::CopyOnly);
+    }
+
+    #[test]
+    fn auto_update_check_is_on_by_default_and_can_be_turned_off() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("c.json");
+        assert!(Config::default().auto_update_check);
+        std::fs::write(&path, r#"{"paste_mode": "auto"}"#).unwrap();
+        assert!(Config::load_from(&path).auto_update_check);
+        std::fs::write(&path, r#"{"auto_update_check": false}"#).unwrap();
+        assert!(!Config::load_from(&path).auto_update_check);
     }
 
     #[test]
