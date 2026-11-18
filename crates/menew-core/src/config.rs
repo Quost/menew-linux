@@ -38,6 +38,8 @@ pub struct Config {
     pub clipboard_auto_delete_days: u32,
     /// Read the text of copied images with tesseract (`clipboardOCR`, on by default).
     pub clipboard_ocr: bool,
+    /// Metrics shown in the tray Title and ToolTip, from `cpu cpuGraph ram net disk battery` (the Mac's `menuBarItems`). Empty (the default) samples nothing until the settings window of Phase 11 lets the user opt in.
+    pub monitor_tray_items: Vec<String>,
 }
 
 impl Default for Config {
@@ -51,6 +53,7 @@ impl Default for Config {
             clipboard_max_items: crate::clip_item::DEFAULT_MAX_ITEMS,
             clipboard_auto_delete_days: 0,
             clipboard_ocr: true,
+            monitor_tray_items: Vec::new(),
         }
     }
 }

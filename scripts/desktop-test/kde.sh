@@ -73,6 +73,11 @@ export MENEW_TEST=1
 # shortens the 30 s clear of a copied secret (only with MENEW_TEST=1)
 export MENEW_SECRET_CLEAR_SECS=3
 
+# Phase 10: the tray shows CPU, memory and disk (the choice lives in config.json until the settings window of Phase 11)
+mkdir -p "$XDG_CONFIG_HOME/menew"
+printf '{"monitor_tray_items": ["cpu", "ram", "disk"]}
+' > "$XDG_CONFIG_HOME/menew/config.json"
+
 # menew daemon (spawns the wl-paste watcher)
 "$MENEW_BIN" >"$MENEW_LOG" 2>&1 &
 MENEW_PID=$!
@@ -219,6 +224,8 @@ if [ "$PIPELINE_OK" = "1" ]; then
 else skip "Phase 5 checks need the wl-copy pipeline (see SKIP above)"; fi
 source "$HERE/phase6.sh"
 if [ "$PIPELINE_OK" = "1" ]; then phase6_checks; else skip "Phase 6 checks need the wl-copy pipeline (see SKIP above)"; fi
+source "$HERE/phase10.sh"
+phase10_checks
 
 # check 4: quit leaves no wl-paste
 "$MENEW_BIN" quit >/dev/null 2>&1 || true

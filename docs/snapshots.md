@@ -33,9 +33,10 @@ What the Mac captures (popover tabs, hub sections, graph, welcome tour, settings
 | Palette, emoji | `palette-emoji` | `emoji rocket` (needs Noto Color Emoji) |
 | Palette, text transform | `palette-transform` | `snake_case` previewed on the copied text |
 | Tray menu | not captured | The menu is drawn by the shell or the panel (a `dbusmenu`), not by Menew, so the app cannot render it |
+| System monitor | `monitor` | The monitor window with an invented sample (23% CPU, 8 cores, 64% memory, 58% disk, battery 80%, five made-up processes); the machine is never read |
 | Notes | not yet | Joins after Phase 6 (notes) is merged: add `"notes"` to `SCREENS` and a case in `apply` in `crates/menew-ui/src/snapshot.rs` |
 
-The Mac's hub, memory, recordings, agents, graph, system monitor and welcome screens have no Linux counterpart yet (see `parity.md`).
+The Mac's hub, memory, recordings, agents, graph and welcome screens have no Linux counterpart yet (see `parity.md`).
 
 ## Adding a screen
 

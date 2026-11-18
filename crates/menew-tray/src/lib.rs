@@ -5,6 +5,7 @@ use tracing::info;
 pub enum TrayCommand {
     OpenPalette,
     OpenClipboard,
+    OpenMonitor,
     /// Delete every unpinned clipboard entry.
     ClearHistory,
     /// Pause the clipboard capture until resumed, or resume it.
@@ -26,16 +27,24 @@ pub struct TrayStatus {
     pub paused: bool,
     /// Items waiting in the paste queue (0 also when the queue is off).
     pub queue: usize,
+    /// The chosen system metrics for the panel, e.g. "CPU 23% · RAM 64%". Empty when none is chosen.
+    /// KDE shows the `Title` as text in the panel; GNOME AppIndicator shows only the icon.
+    pub metrics: String,
+    /// One line per chosen metric (the tooltip body, after the timers).
+    pub metrics_lines: Vec<String>,
 }
 
 impl TrayStatus {
     /// The `Title` property: "Menew" when idle, "Menew · FOCUS 24m" while something runs.
     pub fn title(&self) -> String {
-        if self.summary.is_empty() {
-            "Menew".to_string()
-        } else {
-            format!("Menew \u{b7} {}", self.summary)
-        }
+        let mut parts = vec!["Menew"];
+        parts.extend([self.summary.as_str(), self.metrics.as_str()].into_iter().filter(|p| !p.is_empty()));
+        parts.join(" \u{b7} ")
+    }
+
+    /// The `ToolTip` body: the running timers, then the metrics.
+    pub fn tooltip_lines(&self) -> Vec<String> {
+        self.lines.iter().chain(&self.metrics_lines).cloned().collect()
     }
 }
 
@@ -64,7 +73,7 @@ mod linux_impl {
                 icon_name: "menew-symbolic".to_string(),
                 icon_pixmap: vec![],
                 title: self.status.title(),
-                description: self.status.lines.join("\n"),
+                description: self.status.tooltip_lines().join("\n"),
             }
         }
 
@@ -76,6 +85,7 @@ mod linux_impl {
         fn menu(&self) -> Vec<MenuItem<Self>> {
             let tx_open = self.tx.clone();
             let tx_clip = self.tx.clone();
+            let tx_mon = self.tx.clone();
             let tx_clear = self.tx.clone();
             let tx_pause = self.tx.clone();
             let tx_next = self.tx.clone();
@@ -96,6 +106,15 @@ mod linux_impl {
                     activate: Box::new(move |_| {
                         info!("Tray: Clipboard history requested");
                         let _ = tx_clip.send(TrayCommand::OpenClipboard);
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+                StandardItem {
+                    label: menew_core::t("tray_monitor").to_string(),
+                    activate: Box::new(move |_| {
+                        info!("Tray: System Monitor requested");
+                        let _ = tx_mon.send(TrayCommand::OpenMonitor);
                     }),
                     ..Default::default()
                 }
@@ -200,6 +219,20 @@ mod tests {
         assert_eq!(TrayStatus::default().title(), "Menew");
         let s = TrayStatus { summary: "FOCUS 24m".into(), ..Default::default() };
         assert_eq!(s.title(), "Menew \u{b7} FOCUS 24m");
+    }
+
+    #[test]
+    fn title_and_tooltip_carry_the_metrics() {
+        let s = TrayStatus {
+            metrics: "CPU 23% \u{b7} RAM 64%".into(),
+            metrics_lines: vec!["CPU: 23%".into()],
+            lines: vec!["FOCUS 24m".into()],
+            ..Default::default()
+        };
+        assert_eq!(s.title(), "Menew \u{b7} CPU 23% \u{b7} RAM 64%");
+        assert_eq!(s.tooltip_lines(), vec!["FOCUS 24m".to_string(), "CPU: 23%".to_string()]);
+        let both = TrayStatus { summary: "FOCUS 24m".into(), ..s };
+        assert_eq!(both.title(), "Menew \u{b7} FOCUS 24m \u{b7} CPU 23% \u{b7} RAM 64%");
     }
 
     #[tokio::test]

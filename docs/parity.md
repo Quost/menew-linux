@@ -114,9 +114,9 @@ Licence: GPL-3.0-only, the same as the Mac app; name and icon under `TRADEMARK.m
 
 | Feature | Mac | Linux | R1 | Notes |
 |---|---|---|---|---|
-| CPU, GPU, memory, swap, disk, battery, network live | ✅ | 🔁 | R1 | `/proc`, `/sys`, UPower. GPU: vendor-specific (amdgpu/i915 sysfs, `nvidia-smi`). |
-| Top processes (quit in one click) | ✅ | 🔁 | R1 | |
-| Metrics in the tray (choose which) | ✅ | 🟡 | R1 | SNI tray shows one icon + tooltip/title; text in the panel only on KDE. |
+| CPU, GPU, memory, swap, disk, battery, network live | ✅ | 🟡 | R1 | DONE in Phase 10 (`monitor.rs`, `monitor_view.rs`, vectors in `docs/monitor-spec.md`). `/proc/stat`, `/proc/meminfo`, `/proc/net/dev`, `statvfs`, `/sys/class/power_supply`. Limited: GPU only on AMD (`gpu_busy_percent`; Intel and NVIDIA report no load in sysfs, so the card is hidden, never an estimate); memory pressure is derived from the available share (no Linux level); battery times are computed from energy and power; the disk read/write speed, per-core efficiency/performance split, uptime and local IP of the Mac cards are not done. |
+| Top processes (quit in one click) | ✅ | ✅ | R1 | DONE in Phase 10. By CPU (over the last interval, from `/proc/<pid>/stat`) and by memory, 5 each; SIGTERM in one click, Force Quit (SIGKILL) as a second, explicit button; only the user's own processes are listed and quit (system and other users' refused, also by `menew __quit-process` in the tests). The Mac's "open Activity Monitor" link has no counterpart. |
+| Metrics in the tray (choose which) | ✅ | 🟡 | R1 | DONE in Phase 10 with limits. `Title` + `ToolTip` of the StatusNotifierItem with cpu, cpuGraph, ram, net, disk, battery (`temp` needs sensors, R2). KDE Plasma shows the Title as text in the panel; **GNOME's AppIndicator shows only the icon**, so on GNOME the metrics are only in the tooltip. The choice is `monitor_tray_items` in `config.json`, empty by default (opt-in) until the settings window of Phase 11; the Mac default is CPU + RAM. No separate icons per metric. |
 | History 24 h / 7 d / 30 d with the apps that used the most | ✅ | ⬜ | | |
 | Temperatures and fans | ✅ | 🔁 | | hwmon. |
 | Battery health and wear history | ✅ | 🔁 | | UPower / `/sys/class/power_supply`. |
@@ -175,5 +175,5 @@ To build for R1 (grouped into relay phases in `docs/plan-mvp.md`):
 4. Screenshots: capture, annotate, OCR, QR.
 5. Windows: snapping via KWin script / GNOME extension.
 6. Quick actions: mic/sound/output, dark mode, keep awake, lock, trash, color picker, plain text, eject, brightness, quit apps, ports.
-7. System monitor with top processes and tray metrics.
+7. System monitor with top processes and tray metrics: DONE in Phase 10 (see the rows above and `docs/monitor-spec.md`).
 8. Tray popover (Now / Actions), Menew window, settings, welcome tour, language picker, update check.
