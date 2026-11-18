@@ -394,6 +394,7 @@ pub mod palette {
             // Footer: current mode on the left, key hints on the right
             let footer = gtk4::Box::builder()
                 .orientation(gtk4::Orientation::Horizontal)
+                .spacing(12)
                 .margin_top(6)
                 .margin_bottom(8)
                 .margin_start(14)
@@ -406,6 +407,7 @@ pub mod palette {
             let hint_label = gtk4::Label::builder()
                 .halign(gtk4::Align::End)
                 .hexpand(true)
+                .ellipsize(gtk4::pango::EllipsizeMode::End)
                 .css_classes(["menew-footer"])
                 .build();
             footer.append(&mode_label);
