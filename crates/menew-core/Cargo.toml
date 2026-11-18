@@ -14,6 +14,8 @@ walkdir = "2.4"
 chrono = { version = "0.4", features = ["serde"] }
 # Ed25519 verification of the update artifacts: MIT, no dependencies, no unsafe in the verify path
 ed25519-compact = { version = "2.6", default-features = false, features = ["std"] }
+rqrr = { version = "0.11", default-features = false }
+qrcodegen = "1.8"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"

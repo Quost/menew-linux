@@ -73,6 +73,8 @@ impl ClipHooks {
 pub mod snapshot;
 #[cfg(target_os = "linux")]
 pub mod notes_view;
+#[cfg(target_os = "linux")]
+pub mod screen;
 
 #[cfg(target_os = "linux")]
 pub mod palette {
@@ -208,6 +210,7 @@ pub mod palette {
         /// The password notes of the Passwords filter (only their titles are ever in them).
         visible_passwords: Rc<RefCell<Vec<menew_core::notes::Note>>>,
         notes: Rc<crate::notes_view::NotesApp>,
+        screen: Rc<crate::screen::ScreenApp>,
         /// Set while the widgets are changed by code, so their handlers do not run.
         syncing: Cell<bool>,
         thumbs: RefCell<HashMap<String, gdk::Texture>>,
@@ -244,8 +247,8 @@ pub mod palette {
     }
 
     impl PaletteWindow {
-        pub fn create(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>, hooks: ClipHooks, notes: Rc<crate::notes_view::NotesApp>) -> Rc<Self> {
-            Self::build(app, db, state, on_state, hooks, DesktopScanner::scan_all(), false, notes)
+        pub fn create(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>, hooks: ClipHooks, notes: Rc<crate::notes_view::NotesApp>, screen: Rc<crate::screen::ScreenApp>) -> Rc<Self> {
+            Self::build(app, db, state, on_state, hooks, DesktopScanner::scan_all(), false, notes, screen)
         }
 
         /// Palette for `menew --snapshot`: fixed apps, no scripts folder, no clipboard read, no real data.
@@ -253,11 +256,12 @@ pub mod palette {
         pub fn create_demo(app: &adw::Application, db: ClipboardDatabase, state: SharedState, apps: Vec<DesktopApp>) -> Rc<Self> {
             let store = menew_core::notes::NotesStore::in_memory(Rc::new(menew_core::notes::MemoryVault::default()));
             let notes = crate::notes_view::NotesApp::new(app, store, std::sync::Arc::new(NoAuth));
-            Self::build(app, db, state, Rc::new(|| {}), ClipHooks::inert(), apps, true, notes)
+            let screen = crate::screen::ScreenApp::inert(app);
+            Self::build(app, db, state, Rc::new(|| {}), ClipHooks::inert(), apps, true, notes, screen)
         }
 
         #[allow(clippy::too_many_arguments)]
-        fn build(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>, hooks: ClipHooks, apps: Vec<DesktopApp>, demo: bool, notes: Rc<crate::notes_view::NotesApp>) -> Rc<Self> {
+        fn build(app: &adw::Application, db: ClipboardDatabase, state: SharedState, on_state: Rc<dyn Fn()>, hooks: ClipHooks, apps: Vec<DesktopApp>, demo: bool, notes: Rc<crate::notes_view::NotesApp>, screen: Rc<crate::screen::ScreenApp>) -> Rc<Self> {
             if let Some(display) = gdk::Display::default() {
                 let provider = gtk4::CssProvider::new();
                 provider.load_from_data(CSS);
@@ -491,6 +495,7 @@ pub mod palette {
                 visible_snippets: Rc::new(RefCell::new(Vec::new())),
                 visible_passwords: Rc::new(RefCell::new(Vec::new())),
                 notes,
+                screen,
                 syncing: Cell::new(false),
                 thumbs: RefCell::new(HashMap::new()),
             });
@@ -503,6 +508,15 @@ pub mod palette {
             palette.init_events();
             palette.apply_mode_chrome();
             palette.refresh_list("");
+            {
+                // headless test sessions: the clipboard is set while a window of Menew is mapped
+                let weak = Rc::downgrade(&palette);
+                palette.screen.set_map_hook(Rc::new(move || {
+                    if let Some(p) = weak.upgrade() {
+                        p.test_mode_map_window();
+                    }
+                }));
+            }
 
             palette
         }
@@ -1377,6 +1391,12 @@ pub mod palette {
                 ItemAction::ResumeClipboard => self.resume_clipboard(),
                 ItemAction::ToggleQueue => self.toggle_queue(),
                 ItemAction::PasteNext => self.paste_next(),
+                ItemAction::Capture => self.screen.capture(crate::screen::Purpose::Edit, true),
+                ItemAction::CaptureFull => self.screen.capture(crate::screen::Purpose::Edit, false),
+                ItemAction::CaptureText => self.screen.capture(crate::screen::Purpose::Text, true),
+                ItemAction::QrScan => self.screen.capture(crate::screen::Purpose::Qr, true),
+                ItemAction::QrShow(text) => self.screen.show_qr(text, false),
+                ItemAction::QrWifi => self.screen.show_qr(None, true),
                 ItemAction::TransformCopy { transform, text } => match transform.apply(&text, lang) {
                     None => self.notify("menew-text", transform.failure(lang), None),
                     Some(result) if transform.is_info() => self.notify("menew-text", &result, None),
@@ -1830,6 +1850,10 @@ pub mod palette {
                     self.hide();
                     self.copied(text);
                 }
+                SmartRun::ShowQr(text) => {
+                    self.hide();
+                    self.screen.show_qr(Some(text.clone()), false);
+                }
             }
         }
 
@@ -1976,6 +2000,11 @@ pub mod palette {
         /// on the clipboard without keeping it in the history, and move the cursor to `{cursor}`.
         pub fn notes(&self) -> &Rc<crate::notes_view::NotesApp> {
             &self.notes
+        }
+
+        /// The screen: capture, annotation editor, text from the screen and QR codes.
+        pub fn screen(&self) -> &Rc<crate::screen::ScreenApp> {
+            &self.screen
         }
 
         /// The password (or username) of the `index`-th row of the Passwords filter: asks the user, puts it on the

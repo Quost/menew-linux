@@ -17,6 +17,12 @@ pub enum TrayCommand {
     ShowUpdate,
     /// Turn the automatic update check on or off.
     ToggleAutoUpdate,
+    /// Capture the screen (area or window) and annotate it.
+    Capture,
+    /// Capture an area and copy the text in it.
+    CaptureText,
+    /// Capture an area and copy the QR code in it.
+    ScanQr,
     Quit,
 }
 
@@ -110,6 +116,9 @@ mod linux_impl {
             let tx_check = self.tx.clone();
             let tx_show = self.tx.clone();
             let tx_auto = self.tx.clone();
+            let tx_cap = self.tx.clone();
+            let tx_text = self.tx.clone();
+            let tx_qr = self.tx.clone();
             let lang = menew_core::current_language();
 
             let mut items: Vec<MenuItem<Self>> = vec![];
@@ -171,6 +180,35 @@ mod linux_impl {
                     activate: Box::new(move |_| {
                         info!("Tray: paste next requested");
                         let _ = tx_next.send(TrayCommand::PasteNext);
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+                MenuItem::Separator,
+                // the menu bar items of the Mac: capture the screen, copy text from the screen, read a QR code
+                StandardItem {
+                    label: menew_core::strings::tr("act_capture", lang, &[]),
+                    activate: Box::new(move |_| {
+                        info!("Tray: capture requested");
+                        let _ = tx_cap.send(TrayCommand::Capture);
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+                StandardItem {
+                    label: menew_core::strings::tr("act_ocr", lang, &[]),
+                    activate: Box::new(move |_| {
+                        info!("Tray: text from the screen requested");
+                        let _ = tx_text.send(TrayCommand::CaptureText);
+                    }),
+                    ..Default::default()
+                }
+                .into(),
+                StandardItem {
+                    label: menew_core::strings::tr("act_qr_scan", lang, &[]),
+                    activate: Box::new(move |_| {
+                        info!("Tray: QR code from the screen requested");
+                        let _ = tx_qr.send(TrayCommand::ScanQr);
                     }),
                     ..Default::default()
                 }

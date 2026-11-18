@@ -37,7 +37,15 @@ pub const SCREENS: &[&str] = &[
     "clipboard",
     "clipboard-images",
     "clipboard-snippets",
+    "capture-editor",
+    "qr-code",
+    "qr-wifi",
 ];
+
+/// The screens that are a window of their own (the annotation editor and the QR window), not the palette.
+fn is_window_screen(screen: &str) -> bool {
+    matches!(screen, "capture-editor" | "qr-code" | "qr-wifi")
+}
 
 const DEMO_COPIED_TEXT: &str = "Hello Palette World";
 
@@ -199,6 +207,89 @@ pub fn demo_db(lang: Language, images_dir: &Path) -> Result<ClipboardDatabase, S
     Ok(db)
 }
 
+/// A made-up capture for the editor: an invented billing page with a card number to blur. Nothing of the
+/// machine is in it.
+fn demo_capture(lang: Language) -> Option<gtk4::gdk::Texture> {
+    use gtk4::pango;
+    use gtk4::prelude::Cast;
+    let (w, h) = (880, 520);
+    let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, w, h).ok()?;
+    {
+        let cr = cairo::Context::new(&surface).ok()?;
+        cr.set_source_rgb(0.97, 0.97, 0.98);
+        cr.paint().ok()?;
+        cr.set_source_rgb(0.21, 0.33, 0.78);
+        cr.rectangle(0.0, 0.0, w as f64, 56.0);
+        cr.fill().ok()?;
+        let text = |cr: &cairo::Context, t: &str, x: f64, y: f64, size: f64, bold: bool, rgb: (f64, f64, f64)| {
+            let layout = pangocairo::functions::create_layout(cr);
+            let mut d = pango::FontDescription::new();
+            d.set_family("Sans");
+            if bold {
+                d.set_weight(pango::Weight::Bold);
+            }
+            d.set_absolute_size(size * pango::SCALE as f64);
+            layout.set_font_description(Some(&d));
+            layout.set_text(t);
+            cr.set_source_rgb(rgb.0, rgb.1, rgb.2);
+            cr.move_to(x, y);
+            pangocairo::functions::show_layout(cr, &layout);
+        };
+        let ink = (0.12, 0.13, 0.16);
+        text(&cr, pick(lang, ["Billing", "Cobrança", "Abrechnung", "Facturación", "账单"]), 40.0, 12.0, 28.0, true, (1.0, 1.0, 1.0));
+        text(&cr, pick(lang, ["Invoice #1042", "Fatura #1042", "Rechnung #1042", "Factura #1042", "发票 #1042"]), 40.0, 96.0, 28.0, true, ink);
+        text(&cr, pick(lang, ["Total", "Total", "Summe", "Total", "合计"]), 40.0, 160.0, 28.0, false, ink);
+        text(&cr, "USD 1,280.00", 240.0, 160.0, 28.0, true, ink);
+        text(&cr, pick(lang, ["Card", "Cartão", "Karte", "Tarjeta", "银行卡"]), 40.0, 220.0, 28.0, false, ink);
+        text(&cr, "4111 1111 1111 1111", 250.0, 220.0, 28.0, false, ink);
+        text(&cr, pick(lang, ["Paid", "Pago", "Bezahlt", "Pagado", "已付款"]), 60.0, 280.0, 28.0, true, (0.1, 0.5, 0.25));
+        text(&cr, "example.com", 40.0, 460.0, 20.0, false, (0.45, 0.46, 0.5));
+    }
+    let mut surface = surface;
+    surface.flush();
+    let stride = surface.stride() as usize;
+    let bytes = {
+        let data = surface.data().ok()?;
+        glib::Bytes::from(&data[..])
+    };
+    Some(gtk4::gdk::MemoryTexture::new(w, h, gtk4::gdk::MemoryFormat::B8g8r8a8Premultiplied, &bytes, stride).upcast())
+}
+
+/// The marks of the demo editor: a blur over the card number, a box around "Paid", an arrow to the total and a text.
+fn demo_marks(lang: Language) -> Vec<menew_core::capture::Mark> {
+    use menew_core::capture::{Mark, Point, Tool, COLORS};
+    let mut text = Mark::new(Tool::Text, Point::new(600.0, 340.0), Point::new(600.0, 340.0), COLORS[4]);
+    text.text = pick(lang, ["Check this", "Conferir", "Prüfen", "Revisar", "请核对"]).to_string();
+    vec![
+        Mark::new(Tool::Blur, Point::new(240.0, 212.0), Point::new(560.0, 266.0), COLORS[0]),
+        Mark::new(Tool::Rect, Point::new(44.0, 270.0), Point::new(190.0, 326.0), COLORS[0]),
+        Mark::new(Tool::Arrow, Point::new(590.0, 350.0), Point::new(470.0, 190.0), COLORS[0]),
+        text,
+    ]
+}
+
+/// The content of a window drawn with a soft shadow on a transparent margin, like the palette card.
+fn render_content(window: &gtk4::Window, child: &gtk4::Widget, path: &Path) -> Result<(), String> {
+    use gtk4::prelude::*;
+    use gtk4::{graphene, gsk};
+    let (w, h) = (child.width() as f32, child.height() as f32);
+    if w < 1.0 || h < 1.0 {
+        return Err("the window has no size yet".into());
+    }
+    let margin = 32.0_f32;
+    let snap = gtk4::Snapshot::new();
+    let card = gsk::RoundedRect::from_rect(graphene::Rect::new(margin, margin, w, h), 14.0);
+    snap.append_outset_shadow(&card, &gtk4::gdk::RGBA::new(0.0, 0.0, 0.0, 0.30), 0.0, 8.0, 0.0, 24.0);
+    snap.push_rounded_clip(&card);
+    snap.translate(&graphene::Point::new(margin, margin));
+    gtk4::WidgetPaintable::new(Some(child)).snapshot(&snap, w as f64, h as f64);
+    snap.pop();
+    let node = snap.to_node().ok_or("nothing was drawn")?;
+    let renderer = window.native().and_then(|n| n.renderer()).ok_or("no renderer")?;
+    let texture = renderer.render_texture(&node, Some(&graphene::Rect::new(0.0, 0.0, w + 2.0 * margin, h + 2.0 * margin)));
+    texture.save_to_png(path).map_err(|e| e.to_string())
+}
+
 /// What each screen shows.
 fn apply(screen: &str, lang: Language, p: &Rc<PaletteWindow>) {
     match screen {
@@ -256,6 +347,10 @@ fn step(run: Rc<Run>, i: usize) {
         return;
     };
     adw::StyleManager::default().set_color_scheme(if dark { adw::ColorScheme::ForceDark } else { adw::ColorScheme::ForceLight });
+    if is_window_screen(screen) {
+        window_step(run, i, dark, screen);
+        return;
+    }
     apply(screen, run.lang, &run.palette);
     glib::timeout_add_local_once(Duration::from_millis(SETTLE_MS), move || {
         let file = run.dir.join(format!("{screen}-{}.png", if dark { "dark" } else { "light" }));
@@ -266,6 +361,34 @@ fn step(run: Rc<Run>, i: usize) {
                 run.failed.set(true);
             }
         }
+        step(run, i + 1);
+    });
+}
+
+/// A screen that is a window of its own: open it with its fake data, draw it and close it.
+fn window_step(run: Rc<Run>, i: usize, dark: bool, screen: &'static str) {
+    let sa = Rc::clone(run.palette.screen());
+    let opened = match screen {
+        "capture-editor" => demo_capture(run.lang).and_then(|t| sa.demo_editor(t, demo_marks(run.lang))),
+        "qr-code" => sa.demo_qr("https://example.com/docs/getting-started", None),
+        _ => sa.demo_qr("", Some(("Casa-Demo", "demo-wifi-123"))),
+    };
+    let Some((window, content)) = opened else {
+        eprintln!("snapshot: {screen}: could not open the window");
+        run.failed.set(true);
+        step(run, i + 1);
+        return;
+    };
+    glib::timeout_add_local_once(Duration::from_millis(SETTLE_MS), move || {
+        let file = run.dir.join(format!("{screen}-{}.png", if dark { "dark" } else { "light" }));
+        match render_content(&window, &content, &file) {
+            Ok(()) => println!("snapshot: {}", file.display()),
+            Err(e) => {
+                eprintln!("snapshot: {}: {e}", file.display());
+                run.failed.set(true);
+            }
+        }
+        sa.demo_close();
         step(run, i + 1);
     });
 }

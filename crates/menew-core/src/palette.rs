@@ -115,6 +115,18 @@ pub enum ItemAction {
     PasteNext,
     /// Look for a new version now (or show the one already found).
     CheckUpdates,
+    /// Capture an area or window (the system asks which) and open the annotation editor.
+    Capture,
+    /// Capture the whole screen and open the annotation editor.
+    CaptureFull,
+    /// Capture an area and copy the text in it.
+    CaptureText,
+    /// Capture an area and copy the content of the QR code in it (a link is never opened).
+    QrScan,
+    /// Show the QR code of this text, or of the copied text when `None`.
+    QrShow(Option<String>),
+    /// Show the QR window in its Wi-Fi mode.
+    QrWifi,
 }
 
 impl ItemAction {
@@ -159,6 +171,13 @@ impl ItemAction {
             ItemAction::ResumeClipboard => "resume-clipboard".into(),
             ItemAction::ToggleQueue => "toggle-queue".into(),
             ItemAction::PasteNext => "paste-next".into(),
+            ItemAction::Capture => "capture".into(),
+            ItemAction::CaptureFull => "capture-full".into(),
+            ItemAction::CaptureText => "capture-text".into(),
+            ItemAction::QrScan => "qr-scan".into(),
+            ItemAction::QrShow(None) => "qr-show".into(),
+            ItemAction::QrShow(Some(t)) => format!("qr-show:{t}"),
+            ItemAction::QrWifi => "qr-wifi".into(),
         }
     }
 }
@@ -351,6 +370,7 @@ fn smart_items(text: &str, ctx: &PaletteContext) -> Vec<PaletteItem> {
             let action = match a.run {
                 SmartRun::Open(u) => ItemAction::OpenUri(u),
                 SmartRun::Copy(t) => ItemAction::Copy(t),
+                SmartRun::ShowQr(t) => ItemAction::QrShow(Some(t)),
             };
             PaletteItem::new(&format!("smart.{}", a.id), Kind::Action, &a.title).subtitle(&a.subtitle).kw(&a.keywords).icon(Icon::Symbol(a.icon)).forget().act(action)
         })
@@ -429,6 +449,47 @@ fn commands(ctx: &PaletteContext) -> Vec<PaletteItem> {
                 .act(ItemAction::PasteNext),
         );
     }
+    // the screen (`Palette.commands`: ocr, screenshot, screenshotfull, qrscan, qrshow, qrwifi)
+    out.push(
+        PaletteItem::new("action.ocr", Kind::Action, &tr("act_ocr", lang, &[]))
+            .kw("ocr texto text capturar capture scan ler read textsniper")
+            .icon(Icon::Symbol("edit-find-symbolic"))
+            .shortcut("Ctrl+Alt+Shift+T")
+            .act(ItemAction::CaptureText),
+    );
+    out.push(
+        PaletteItem::new("action.screenshot", Kind::Action, &tr("act_capture", lang, &[]))
+            .subtitle(&tr("act_capture_sub", lang, &[]))
+            .kw("print screenshot captura capturar tela imagem anotar annotate cleanshot bildschirmfoto captura 截图")
+            .icon(Icon::Symbol("applets-screenshooter-symbolic"))
+            .shortcut("Ctrl+Alt+Shift+S")
+            .act(ItemAction::Capture),
+    );
+    out.push(
+        PaletteItem::new("action.screenshotfull", Kind::Action, &tr("act_capture_full", lang, &[]))
+            .kw("print screenshot tela inteira full screen captura")
+            .icon(Icon::Symbol("video-display-symbolic"))
+            .act(ItemAction::CaptureFull),
+    );
+    out.push(
+        PaletteItem::new("action.qrscan", Kind::Action, &tr("act_qr_scan", lang, &[]))
+            .kw("qr qrcode ler scan escanear código code barcode lesen escanear 二维码 扫描")
+            .icon(Icon::Symbol("view-grid-symbolic"))
+            .act(ItemAction::QrScan),
+    );
+    out.push(
+        PaletteItem::new("action.qrshow", Kind::Action, &tr("act_qr_show", lang, &[]))
+            .subtitle(&tr("qr_phone_sub", lang, &[]))
+            .kw("qr qrcode gerar generate mostrar show celular phone link compartilhar share 二维码 生成")
+            .icon(Icon::Symbol("view-grid-symbolic"))
+            .act(ItemAction::QrShow(None)),
+    );
+    out.push(
+        PaletteItem::new("action.qrwifi", Kind::Action, &tr("act_qr_wifi", lang, &[]))
+            .kw("qr qrcode wifi wi-fi rede network senha password visitante guest wlan 无线")
+            .icon(Icon::Symbol("network-wireless-symbolic"))
+            .act(ItemAction::QrWifi),
+    );
     // snippets (`Palette.commands`)
     for s in ctx.clip.snippets {
         out.push(

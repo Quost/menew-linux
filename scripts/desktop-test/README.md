@@ -77,3 +77,28 @@ file (`grep -r`) and is in the keyring (`secret-tool lookup application app.mene
 filter; the copied value on the clipboard, not in the history, cleared after the delay only if still there; polkit
 (recorded: the policy is not installed in the test session, so the fallback runs; a real authentication agent
 does not exist headless, which is a `SKIP`); and the screenshot `docs/desktop-tests/<de>-notes.png`.
+
+## Phase 7 (screenshots, text from the screen, QR codes)
+
+`phase7.sh` is sourced after `phase6.sh` (`phase7_checks`), with the helper `p7check.py` for the pixel checks. It needs
+`imagemagick` (`convert`, `identify`, `compare`) and `tesseract-ocr`. Test hooks (only with `MENEW_TEST=1`):
+`__capture-from <edit|text|qr> <png>` (use this image as the capture; the file is kept, a file of the portal is deleted),
+`__annotate <in.png> <out.png> <marks>` (the export of the editor without a window; marks are `blur:x1,y1,x2,y2`,
+`rect:x1,y1,x2,y2:color`, `arrow:...`, `pen:x,y x,y ...:color`, `text:x,y:color:Text`, joined by `;`),
+`__capture-save <in.png> <dir>` (what Save writes: `Screenshot <date>.png` in that folder), `__capture-copy <in.png> <marks>`
+(what Copy does), `__qr-image <text> <out.png>` (the image of "Copy image") and `__qr-show [text]` (open the QR window, log its payload).
+
+**The screenshot portal itself**: the script ends by running `menew capture-full` against the real
+`org.freedesktop.portal.Screenshot` of the session and records what happened (a picture and the editor, or the error
+shown to the user). When no backend can take a picture in the headless session the check is a `SKIP` that says so, and the
+pictures of the other checks come from `__capture-from`. The picker of `menew capture` (area or window) needs a person and is
+not run. Dragging the image out of the editor needs a pointer and is not run either.
+
+What is checked: OCR of generated images (one line, two lines, a blank image); QR codes made by the app, put on a
+1280x800 picture and read back (link, Wi-Fi, none) with the clipboard content, the messages, **no `Opened` line in the daemon
+log, no OpenURI call on the session bus, no browser process**, and a positive control that an open from the palette does
+show in the same log; the QR window and its screenshot; the export of the editor, checked pixel by pixel by `p7check.py`
+(inside a blur box every pixel is the average of its 10x10 block and differs from the original, outside everything is
+identical; a rectangle, an arrow, a text and a pen change only pixels near their own coordinates); Save (name and
+content), Copy (the annotated image reaches the clipboard history and keeps its blur); the editor window and its
+screenshot; the palette, tray and smart action entries.

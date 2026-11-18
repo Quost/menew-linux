@@ -37,7 +37,7 @@ pipe character.
   codes come from regular expressions and plain code in the Mac source: those rows are `exact`.
 - The **address** action opens OpenStreetMap, the Mac opens Apple Maps (`maps.apple.com`).
 - The **phone** action opens a `tel:` link with the default handler; the subtitle is "With your phone app"
-  instead of "With FaceTime or your iPhone". There is no QR code action for links yet (Phase 7).
+  instead of "With FaceTime or your iPhone". The "Show QR code for the link" action (`qr~...~qr:<url>`) comes after the link action (Phase 7, `docs/screenshots-spec.md`).
 - Images are kept as they arrive (`image/png`, `image/jpeg`...) named by the hash of those bytes. The Mac converts
   everything to PNG first.
 - A copy of the same image keeps its text read by OCR; on the Mac the entry is replaced and read again.
@@ -68,8 +68,8 @@ expression or code of the Mac) or `approx` (the Mac asks `NSDataDetector`). `REP
 | A11 | en | - | Join: https://meet.google.com/abc-defg-hij thanks | meeting~Join meeting~meet.google.com~open:https://meet.google.com/abc-defg-hij | exact | Meetings.linkPattern (meet.google.com/), found inside a longer text |
 | A12 | en | - | https://acme.webex.com/meet/ana | meeting~Join meeting~acme.webex.com~open:https://acme.webex.com/meet/ana | exact | Meetings.linkPattern ([\w-]+\.webex\.com/) |
 | A13 | en | - | https://teams.microsoft.com/l/meetup-join/19%3ameeting | meeting~Join meeting~teams.microsoft.com~open:https://teams.microsoft.com/l/meetup-join/19%3ameeting | exact | Meetings.linkPattern (teams) |
-| A14 | en | - | http://meet.google.com/abc | link~Open meet.google.com~http://meet.google.com/abc~open:http://meet.google.com/abc | approx | Meetings.linkPattern (only https, so it is not a meeting; the detector still finds a link) |
-| A15 | en | - | https://example.com/j/123 | link~Open example.com~https://example.com/j/123~open:https://example.com/j/123 | approx | SmartClip.detect (.link) |
+| A14 | en | - | http://meet.google.com/abc | link~Open meet.google.com~http://meet.google.com/abc~open:http://meet.google.com/abc ;; qr~Show QR code for the link~To open on your phone~qr:http://meet.google.com/abc | approx | Meetings.linkPattern (only https, so it is not a meeting; the detector still finds a link) |
+| A15 | en | - | https://example.com/j/123 | link~Open example.com~https://example.com/j/123~open:https://example.com/j/123 ;; qr~Show QR code for the link~To open on your phone~qr:https://example.com/j/123 | approx | SmartClip.detect (.link), `QRCode.show(text:)` |
 | A16 | en | - | hello@example.com | mail~Write to hello@example.com~In your email app~open:mailto:hello@example.com | approx | SmartClip.detect (mailto) |
 | A17 | pt | BR | +55 11 98765-4321 | phone~Ligar para +55 11 98765-4321~No app de telefone~open:tel:+5511987654321 ;; whatsapp~Abrir conversa no WhatsApp~+55 11 98765-4321~open:https://wa.me/5511987654321 | approx | SmartClip.detect (.phoneNumber, wa.me) |
 | A18 | pt | BR | (11) 98765-4321 | phone~Ligar para (11) 98765-4321~No app de telefone~open:tel:11987654321 ;; whatsapp~Abrir conversa no WhatsApp~(11) 98765-4321~open:https://wa.me/5511987654321 | approx | SmartClip.countryCodes (BR is 55, put before a number without +) |
@@ -78,7 +78,7 @@ expression or code of the Mac) or `approx` (the Mac asks `NSDataDetector`). `REP
 | A21 | en | - | call me at 11 98765-4321 tomorrow please | - | approx | SmartClip.detect (the number is less than 70% of the text) |
 | A22 | en | - | 350 Fifth Avenue, New York, NY 10118 | address~Open in Maps~350 Fifth Avenue, New York, NY 10118~open:https://www.openstreetmap.org/search?query=350%20Fifth%20Avenue,%20New%20York,%20NY%2010118 | approx | SmartClip.detect (.address; the Mac opens Apple Maps) |
 | A23 | pt | - | Av. Paulista, 1578 - Bela Vista, São Paulo | address~Abrir no Mapas~Av. Paulista, 1578 - Bela Vista, São Paulo~open:https://www.openstreetmap.org/search?query=Av.%20Paulista,%201578%20-%20Bela%20Vista,%20S%C3%A3o%20Paulo | approx | SmartClip.detect (.address, urlQueryAllowed) |
-| A24 | en | - | www.example.org | link~Open www.example.org~http://www.example.org~open:http://www.example.org | approx | SmartClip.detect (.link) |
+| A24 | en | - | www.example.org | link~Open www.example.org~http://www.example.org~open:http://www.example.org ;; qr~Show QR code for the link~To open on your phone~qr:http://www.example.org | approx | SmartClip.detect (.link), `QRCode.show(text:)` |
 | A25 | en | - | 2026-11-14 | - | approx | SmartClip.detect (a date is not a phone number) |
 | A26 | en | - | 192.168.100.100 | - | approx | SmartClip.detect (an IP address is not a phone number) |
 | A27 | en | - | hello | - | exact | SmartClip.detect |

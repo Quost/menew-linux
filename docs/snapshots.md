@@ -32,6 +32,9 @@ What the Mac captures (popover tabs, hub sections, graph, welcome tour, settings
 | Palette, conversion | `palette-conversion` | `5 km to mi` |
 | Palette, emoji | `palette-emoji` | `emoji rocket` (needs Noto Color Emoji) |
 | Palette, text transform | `palette-transform` | `snake_case` previewed on the copied text |
+| Capture editor | `capture-editor` | The annotation editor over an invented billing page: a blur over a card number, a box, an arrow and a text |
+| QR code, text or link | `qr-code` | The QR window with the code of a link |
+| QR code, Wi-Fi | `qr-wifi` | The QR window in its Wi-Fi mode (an invented network and password) |
 | Tray menu | not captured | The menu is drawn by the shell or the panel (a `dbusmenu`), not by Menew, so the app cannot render it |
 | Notes | not yet | Joins after Phase 6 (notes) is merged: add `"notes"` to `SCREENS` and a case in `apply` in `crates/menew-ui/src/snapshot.rs` |
 
@@ -45,6 +48,6 @@ The Mac's hub, memory, recordings, agents, graph, system monitor and welcome scr
 
 ## How the image is made
 
-The palette card is drawn by the app itself (`PaletteWindow::capture_png`): the card with a soft shadow on a transparent margin,
+The palette card is drawn by the app itself (`PaletteWindow::capture_png`; the editor and QR windows are drawn the same way by `snapshot::render_content`, with their title bar and rounded corners; the picture in the editor is invented and drawn in `snapshot::demo_capture`): the card with a soft shadow on a transparent margin,
 so there is no desktop, panel or window frame to crop. Fonts come from the session: Cantarell, the Adwaita icon theme and Noto Color
 Emoji (and a CJK font for Chinese); the script stops with an error when one is missing instead of drawing boxes.

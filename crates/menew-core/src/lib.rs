@@ -1,4 +1,5 @@
 pub mod autostart;
+pub mod capture;
 pub mod clip_item;
 pub mod clip_policy;
 pub mod clip_smart;
@@ -21,6 +22,7 @@ pub mod palette;
 pub mod ocr;
 pub mod paste;
 pub mod paste_queue;
+pub mod qr;
 pub mod quick_links;
 pub mod recents;
 pub mod script_commands;
