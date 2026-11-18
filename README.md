@@ -23,7 +23,7 @@
 </p>
 
 <p align="center">
-  <a href="https://menew.web.app/?ref=github"><b>Website</b></a> ·
+  <a href="https://menew.web.app/linux?ref=github"><b>Website</b></a> ·
   <a href="https://github.com/Quost/menew-linux/releases"><b>Download</b></a> (no release yet) ·
   <a href="CONTRIBUTING.md"><b>Contribute</b></a> ·
   <a href="https://github.com/Quost/menew"><b>Mac app</b></a>
