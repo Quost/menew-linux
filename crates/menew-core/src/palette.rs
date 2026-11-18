@@ -113,6 +113,8 @@ pub enum ItemAction {
     ToggleQueue,
     /// Paste the next item of the queue.
     PasteNext,
+    /// Look for a new version now (or show the one already found).
+    CheckUpdates,
 }
 
 impl ItemAction {
@@ -145,6 +147,7 @@ impl ItemAction {
             ItemAction::GenerateUuid => "generate-uuid".into(),
             ItemAction::CopyUnixTimestamp => "copy-unix-timestamp".into(),
             ItemAction::Quit => "quit".into(),
+            ItemAction::CheckUpdates => "check-updates".into(),
             ItemAction::PasteClip(_) => "paste-clip".into(),
             ItemAction::PasteEntry(id) => format!("paste-entry:{id}"),
             ItemAction::PasteSnippet(id) => format!("paste-snippet:{id}"),
@@ -504,6 +507,12 @@ fn commands(ctx: &PaletteContext) -> Vec<PaletteItem> {
             .kw("timestamp unix epoch agora now segundos seconds zeitstempel marca tiempo 时间戳")
             .icon(Icon::Symbol("preferences-system-time-symbolic"))
             .act(ItemAction::CopyUnixTimestamp),
+    );
+    out.push(
+        PaletteItem::new("action.checkupdates", Kind::Action, &tr("upd_check", lang, &[]))
+            .kw("update updates upgrade atualizar atualizacao atualizações aktualisieren actualizar actualización 更新 version versão")
+            .icon(Icon::Symbol("software-update-available-symbolic"))
+            .act(ItemAction::CheckUpdates),
     );
     out.push(
         PaletteItem::new("action.quit", Kind::Action, &tr("act_quit", lang, &[]))

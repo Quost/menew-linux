@@ -41,7 +41,7 @@ pub fn tray_status(state: &PaletteState, now: f64, lang: Language) -> TrayStatus
     if state.queue.is_on() {
         parts.push(format!("{} {}", tr("queue_label", lang, &[]), state.queue.len()));
     }
-    TrayStatus { summary: parts.join(" \u{b7} "), lines, paused: false, queue: state.queue.len() }
+    TrayStatus { summary: parts.join(" \u{b7} "), lines, paused: false, queue: state.queue.len(), ..TrayStatus::default() }
 }
 
 /// Fire what is due at `now`. Returns true when something ended (the tray needs a refresh).

@@ -214,10 +214,11 @@ The global shortcuts use the GlobalShortcuts portal, available on KDE Plasma and
 
 ## Privacy
 
-The app has **no telemetry, no analytics and no account**, and makes no network request you did not ask for.
+The app has **no telemetry, no analytics and no account**, and makes no network request you did not ask for, except the update check below (which you can switch off).
 
 - The clipboard history is stored only in a local SQLite file (`~/.local/share/menew/clipboard.db`); images are files in `~/.local/share/menew/clipboard/`. Nothing is uploaded.
 - The only network request is a currency rate, sent when you press <kbd>Enter</kbd> on a conversion like `100 usd to brl`: one HTTPS GET to `api.frankfurter.app` (European Central Bank data, the same provider the Mac app uses) with the two currency codes and nothing else, made with the system `curl`. Typing never sends anything; the rate is kept in memory for 6 hours.
+- The second network request is the update check, the same idea as the Mac app's: on by default, switch it off with "Check for updates automatically" in the tray (or `"auto_update_check": false` in `~/.config/menew/config.json`). A few minutes after start and then every 24 hours Menew reads the list of releases of this repository from `api.github.com` and the `update.json` of the newest one with the system `curl`, and sends nothing but `User-Agent: Menew/<version>`: no identifier, no usage data. It never opens a window by itself: the tray icon gets a dot and a menu item "Update available". An update is installed only when you pick **Install and Relaunch**, and only after its size, SHA-256 and Ed25519 signature (key compiled into Menew) are checked; otherwise nothing is touched. `menew check-updates` does the check from a terminal. Nothing is requested in the screenshot mode.
 - Copies flagged by password managers (`x-kde-passwordManagerHint`, `CONCEALED` and similar) are never read, whatever they hold (text, image or files). While the capture is paused the clipboard is not read at all.
 - Reading the text of images runs `tesseract` locally; nothing is uploaded.
 - Your recent picks are stored in `~/.local/share/menew/recents.json` (item ids only, never copied text); scripts, quick links and world clocks live in `~/.local/share/menew/scripts` and `~/.config/menew/config.json`.

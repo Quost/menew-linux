@@ -1,6 +1,10 @@
 #[cfg(target_os = "linux")]
 mod alerts;
 #[cfg(target_os = "linux")]
+mod updater;
+#[cfg(unix)]
+mod updater_cli;
+#[cfg(target_os = "linux")]
 use std::cell::RefCell;
 #[cfg(target_os = "linux")]
 use std::rc::Rc;
@@ -54,6 +58,10 @@ enum Action {
     NotesCreate(String, String),
     NotesOpen(Option<String>),
     PasswordPaste(usize, bool),
+    /// Test hooks (with `MENEW_TEST=1` and `MENEW_UPDATE_FEED`): "Check for Updates" with its window, and
+    /// check then install at once (what Install and Relaunch does, without clicking).
+    UpdatesCheck,
+    UpdatesInstall,
     Quit,
 }
 
@@ -85,6 +93,12 @@ fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
 /// Parse `__select-clipboard|__pin-clipboard|__delete-clipboard <index>`, `__palette-query <text>`
 /// and `__palette-activate <index>`.
 fn test_action(args: &[String]) -> Option<Action> {
+    if args.iter().any(|a| a == "__updates-install") {
+        return Some(Action::UpdatesInstall);
+    }
+    if args.iter().any(|a| a == "__updates-check") {
+        return Some(Action::UpdatesCheck);
+    }
     if let Some(p) = args.iter().position(|a| a == "__palette-query") {
         return args.get(p + 1).map(|t| Action::PaletteQuery(t.clone()));
     }
@@ -139,6 +153,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Check for internal helper invoked by wl-paste --watch
     if args.len() > 1 && args[1] == "__clipboard-push" {
         return handle_clipboard_push();
+    }
+
+    // `menew check-updates [--install]`: a terminal command, it never starts or talks to the daemon
+    #[cfg(unix)]
+    if args.get(1).map(|a| a == "check-updates").unwrap_or(false) {
+        set_language(Language::detect());
+        std::process::exit(updater_cli::run(&args[2..]));
     }
 
     // `menew --snapshot <dir> [-language en|pt|de|es|zh]`: render the screens with fake data and exit.
@@ -254,12 +275,14 @@ fn run_gtk_app(args: Vec<String>) {
         .build();
 
     let palette_cell: Rc<RefCell<Option<Rc<menew_ui::PaletteWindow>>>> = Rc::new(RefCell::new(None));
+    let updater_cell: Rc<RefCell<Option<Rc<updater::Updater>>>> = Rc::new(RefCell::new(None));
 
     let watcher_cell: Rc<RefCell<Option<Rc<RefCell<menew_clipboard::WatcherControl>>>>> =
         Rc::new(RefCell::new(None));
 
     // connect_startup is guaranteed to execute ONLY on the primary instance
     let p_startup = Rc::clone(&palette_cell);
+    let u_startup = Rc::clone(&updater_cell);
     let rt_startup = Arc::clone(&rt);
     let w_startup = Rc::clone(&watcher_cell);
     app.connect_startup(move |application| {
@@ -285,6 +308,7 @@ fn run_gtk_app(args: Vec<String>) {
         clipboard_service.prune();
         let control = Rc::new(RefCell::new(menew_clipboard::WatcherControl::new(Arc::clone(&pause))));
         let (status_tx, status_rx) = mpsc::unbounded_channel::<TrayStatus>();
+        let updater = updater::Updater::new(application, Arc::clone(&rt_startup), config.auto_update_check);
         // pushes the countdown to the tray whenever it changes
         let last_status = Rc::new(RefCell::new(TrayStatus::default()));
         let push_status: Rc<dyn Fn()> = {
@@ -292,9 +316,12 @@ fn run_gtk_app(args: Vec<String>) {
             let last = Rc::clone(&last_status);
             let tx = status_tx.clone();
             let svc = Arc::clone(&clipboard_service);
+            let upd = Rc::clone(&updater);
             Rc::new(move || {
                 let mut status = alerts::tray_status(&state.borrow(), alerts::now(), menew_core::current_language());
                 status.paused = svc.is_paused();
+                status.update = upd.pending_version();
+                status.auto_update = upd.auto_enabled();
                 if *last.borrow() != status {
                     info!("Tray status: {:?} {:?}", status.title(), status.lines);
                     *last.borrow_mut() = status.clone();
@@ -302,6 +329,12 @@ fn run_gtk_app(args: Vec<String>) {
                 }
             })
         };
+        {
+            let push = Rc::clone(&push_status);
+            updater.set_on_change(Rc::new(move || push()));
+        }
+        updater.start_schedule();
+        *u_startup.borrow_mut() = Some(Rc::clone(&updater));
         let hooks = {
             let (s1, s2, s3, s4, s5) = (
                 Arc::clone(&clipboard_service),
@@ -323,6 +356,10 @@ fn run_gtk_app(args: Vec<String>) {
                 is_paused: Rc::new(move || s3.is_paused()),
                 expect_own: Rc::new(move |k, skip| s4.expect_own_write(k, skip)),
                 queue_ocr: Rc::new(move || s5.queue_ocr()),
+                check_updates: {
+                    let u = Rc::clone(&updater);
+                    Rc::new(move || u.check_manual())
+                },
             }
         };
         // the notes: content of the protected ones in the Secret Service, the user asked through polkit
@@ -421,6 +458,7 @@ fn run_gtk_app(args: Vec<String>) {
         let tray_svc = Arc::clone(&clipboard_service);
         let tray_ctl = Rc::clone(&control);
         let app_handle = application.clone();
+        let upd_tray = Rc::clone(&updater);
         glib::MainContext::default().spawn_local(async move {
             while let Some(cmd) = tray_rx.recv().await {
                 match cmd {
@@ -440,6 +478,9 @@ fn run_gtk_app(args: Vec<String>) {
                         p_tray.queue_changed();
                     }
                     TrayCommand::PasteNext => p_tray.paste_next(),
+                    TrayCommand::CheckUpdates => upd_tray.check_manual(),
+                    TrayCommand::ShowUpdate => upd_tray.show_pending(),
+                    TrayCommand::ToggleAutoUpdate => upd_tray.toggle_auto(),
                     TrayCommand::Quit => app_handle.quit(),
                 }
             }
@@ -468,6 +509,7 @@ fn run_gtk_app(args: Vec<String>) {
     // connect_command_line handles first launch and remote IPC such as `menew toggle`
     let p_cmd = Rc::clone(&palette_cell);
     let app_cmd = app.clone();
+    let upd_cmd = Rc::clone(&updater_cell);
     app.connect_command_line(move |_application, cmd_line| {
         let cmd_args: Vec<String> = cmd_line
             .arguments()
@@ -549,6 +591,16 @@ fn run_gtk_app(args: Vec<String>) {
                 if let Some(palette) = p_cmd.borrow().as_ref() {
                     let found = palette.test_password_paste(index, username);
                     info!("Test hook: password-paste {} username={} -> found={}", index, username, found);
+                }
+            }
+            Action::UpdatesCheck => {
+                if let Some(u) = upd_cmd.borrow().as_ref() {
+                    u.check_manual();
+                }
+            }
+            Action::UpdatesInstall => {
+                if let Some(u) = upd_cmd.borrow().as_ref() {
+                    u.test_check_and_install();
                 }
             }
             Action::PaletteActivate(index) => {

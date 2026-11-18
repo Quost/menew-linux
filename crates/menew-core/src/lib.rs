@@ -31,6 +31,8 @@ pub mod strings;
 pub mod text_transforms;
 pub mod time_zones;
 pub mod timers;
+#[cfg(unix)]
+pub mod updates;
 
 pub use calculator::{evaluate, CalcResult};
 pub use clipboard_db::{ClipKind, ClipboardDatabase, ClipboardEntry};

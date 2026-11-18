@@ -69,6 +69,30 @@ jobs:
             exit 1
           fi
 
+      # The feed of the in-app updater (docs/updates-spec.md): update.json with the notes and, for each
+      # artifact, the URL, size, SHA-256 and an Ed25519 signature. Without the key the release is NOT published.
+      - name: Sign the artifacts and write update.json
+        env:
+          MENEW_UPDATE_SIGNING_KEY: ${{ secrets.MENEW_UPDATE_SIGNING_KEY }}
+        run: |
+          if [ -z "${MENEW_UPDATE_SIGNING_KEY}" ]; then
+            echo "the MENEW_UPDATE_SIGNING_KEY secret is missing: refusing to publish an unsigned release" >&2
+            exit 1
+          fi
+          key="$(mktemp)"
+          trap 'rm -f "$key"' EXIT
+          printf '%s\n' "${MENEW_UPDATE_SIGNING_KEY}" > "$key"
+          # the key must be the one compiled into the app, or no installed copy could verify the update
+          derived="$(openssl pkey -in "$key" -pubout -outform DER | tail -c 32 | base64 -w0)"
+          embedded="$(sed -n 's/.*UPDATE_PUBLIC_KEY: &str = "\([^"]*\)".*/\1/p' crates/menew-core/src/updates.rs)"
+          if [ "${derived}" != "${embedded}" ]; then
+            echo "the signing key (${derived}) is not UPDATE_PUBLIC_KEY of crates/menew-core/src/updates.rs (${embedded})" >&2
+            exit 1
+          fi
+          bash scripts/make-update-json.sh "${VERSION}" dist "$key" \
+            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${GITHUB_REF_NAME}" dist/RELEASE_NOTES.md
+          cat dist/update.json
+
       - name: Create the GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,4 +107,5 @@ jobs:
             "${flags[@]}" \
             "dist/menew_${VERSION}_amd64.deb" \
             "dist/Menew-${VERSION}-x86_64.AppImage" \
-            dist/SHA256SUMS
+            dist/SHA256SUMS \
+            dist/update.json

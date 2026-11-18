@@ -51,6 +51,8 @@ pub struct ClipHooks {
     pub expect_own: Rc<dyn Fn(String, bool)>,
     /// Read the text of the images that were not read yet.
     pub queue_ocr: Rc<dyn Fn()>,
+    /// "Check for Updates…": look for a new version, or show the one already found.
+    pub check_updates: Rc<dyn Fn()>,
 }
 
 impl ClipHooks {
@@ -62,6 +64,7 @@ impl ClipHooks {
             is_paused: Rc::new(|| false),
             expect_own: Rc::new(|_, _| {}),
             queue_ocr: Rc::new(|| {}),
+            check_updates: Rc::new(|| {}),
         }
     }
 }
@@ -1459,6 +1462,7 @@ pub mod palette {
                 ItemAction::GenerateUuid => self.copied(&dev_tools::uuid_v4()),
                 ItemAction::CopyUnixTimestamp => self.copied(&dev_tools::now_secs().to_string()),
                 ItemAction::Quit => self.app.quit(),
+                ItemAction::CheckUpdates => (self.hooks.check_updates)(),
             }
         }
 
