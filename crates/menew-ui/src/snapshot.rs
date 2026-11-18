@@ -27,7 +27,6 @@ use std::time::Duration;
 const SETTLE_MS: u64 = 700;
 
 /// The screens, in the order they are drawn. Names are the file names (without `-light`/`-dark.png`).
-/// Add the "notes" screen here once the notes are merged (Phase 6).
 pub const SCREENS: &[&str] = &[
     "palette",
     "palette-apps",
@@ -40,6 +39,7 @@ pub const SCREENS: &[&str] = &[
     "capture-editor",
     "qr-code",
     "qr-wifi",
+    "monitor",
 ];
 
 /// The screens that are a window of their own (the annotation editor and the QR window), not the palette.
@@ -325,7 +325,8 @@ pub fn run(app: &adw::Application, dir: PathBuf, lang: Language, failed: Rc<Cell
     };
     let palette = PaletteWindow::create_demo(app, db, demo_state(lang), demo_apps(lang));
     let jobs: Vec<(bool, &'static str)> = [false, true].into_iter().flat_map(|dark| SCREENS.iter().map(move |s| (dark, *s))).collect();
-    let run = Rc::new(Run { app: app.clone(), palette, dir, jobs, images, failed, lang });
+    let monitor = crate::monitor_view::MonitorWindow::new_demo(app, lang);
+    let run = Rc::new(Run { app: app.clone(), palette, monitor, dir, jobs, images, failed, lang });
     step(run, 0);
 }
 
@@ -333,6 +334,8 @@ pub fn run(app: &adw::Application, dir: PathBuf, lang: Language, failed: Rc<Cell
 struct Run {
     app: adw::Application,
     palette: Rc<PaletteWindow>,
+    /// The system monitor window, showing the fake sample.
+    monitor: Rc<crate::monitor_view::MonitorWindow>,
     dir: PathBuf,
     jobs: Vec<(bool, &'static str)>,
     images: PathBuf,
@@ -351,10 +354,15 @@ fn step(run: Rc<Run>, i: usize) {
         window_step(run, i, dark, screen);
         return;
     }
-    apply(screen, run.lang, &run.palette);
+    if screen == "monitor" {
+        run.monitor.show();
+    } else {
+        apply(screen, run.lang, &run.palette);
+    }
     glib::timeout_add_local_once(Duration::from_millis(SETTLE_MS), move || {
         let file = run.dir.join(format!("{screen}-{}.png", if dark { "dark" } else { "light" }));
-        match run.palette.capture_png(&file) {
+        let drawn = if screen == "monitor" { run.monitor.capture_png(&file) } else { run.palette.capture_png(&file) };
+        match drawn {
             Ok(()) => println!("snapshot: {}", file.display()),
             Err(e) => {
                 eprintln!("snapshot: {}: {e}", file.display());

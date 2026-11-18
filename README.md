@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Your command palette and clipboard history, native on Linux.</b><br>
-  Command palette · Calculator and conversions · Clipboard history · Notes · Snippets · Timers and focus · Emoji · Script commands<br>
+  Command palette · Calculator and conversions · Clipboard history · Notes · System monitor · Snippets · Timers and focus · Emoji · Script commands<br>
   Free, open source, native. No account, no telemetry.
 </p>
 
@@ -80,6 +80,19 @@ Text, links, images and files with instant search, filters, pins and a preview. 
 ### 📝 Notes: `menew notes`
 
 Many notes with `#tags`, search and Markdown (headings, lists, checklists you can tick, quotes, code, bold, italic, links), in the same three kinds as the Mac: **normal**, **protected** (the content goes to your keyring, GNOME Keyring or KWallet, and opening it asks for your password through polkit) and **passwords** (name and value rows, hidden values, an eye to show and a copy button). A copied password is marked as confidential, never enters the history and is cleared after 30 seconds. The clipboard has a **Passwords** filter: <kbd>Enter</kbd> pastes the password, <kbd>Alt</kbd> <kbd>Enter</kbd> the username. Notes also show up in the palette.
+
+### 📊 System monitor: `menew monitor`
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/monitor-dark.png">
+    <img src="docs/assets/monitor-light.png" width="420" alt="The system monitor: processor, memory, disk, network, battery and the top processes">
+  </picture>
+</p>
+
+CPU with a graph of the last 2 minutes, each core, the GPU where the driver reports it (AMD), **memory** split into apps, system and compressed with swap and a pressure badge, disk space, network speed with graphs, the battery with the time left and the **top processes by CPU and by memory**. Quit one with a click (SIGTERM); if it ignores that, a separate **Force Quit** button appears. Only your own processes are listed: the system and other users' are never offered. It opens from the tray, the palette ("system monitor") and `menew monitor`, and it reads the machine only while the window is open.
+
+To show metrics in the tray (CPU, memory, network, disk, battery, a CPU graph), put them in `~/.config/menew/config.json` until the settings window arrives: `{"monitor_tray_items": ["cpu", "ram", "net"]}`. KDE Plasma shows them as text in the panel; GNOME's AppIndicator shows only the icon, so there they are in the tooltip. History, temperatures, battery health and alerts are not here yet.
 
 ## Everything else
 
@@ -159,7 +172,7 @@ The language follows `LC_ALL` / `LANG`.
 
 </details>
 
-Not here yet (see [docs/parity.md](docs/parity.md)): Memory, recordings, screenshots, window management, system monitor, on-device AI and agents. They are on the roadmap of the Mac app and will come to Linux as far as the platform allows.
+Not here yet (see [docs/parity.md](docs/parity.md)): Memory, recordings, screenshots, window management, on-device AI and agents. They are on the roadmap of the Mac app and will come to Linux as far as the platform allows.
 
 ## Install
 
@@ -221,6 +234,7 @@ The app has **no telemetry, no analytics and no account**, and makes no network 
 - The second network request is the update check, the same idea as the Mac app's: on by default, switch it off with "Check for updates automatically" in the tray (or `"auto_update_check": false` in `~/.config/menew/config.json`). A few minutes after start and then every 24 hours Menew reads the list of releases of this repository from `api.github.com` and the `update.json` of the newest one with the system `curl`, and sends nothing but `User-Agent: Menew/<version>`: no identifier, no usage data. It never opens a window by itself: the tray icon gets a dot and a menu item "Update available". An update is installed only when you pick **Install and Relaunch**, and only after its size, SHA-256 and Ed25519 signature (key compiled into Menew) are checked; otherwise nothing is touched. `menew check-updates` does the check from a terminal. Nothing is requested in the screenshot mode.
 - Copies flagged by password managers (`x-kde-passwordManagerHint`, `CONCEALED` and similar) are never read, whatever they hold (text, image or files). While the capture is paused the clipboard is not read at all.
 - Reading the text of images runs `tesseract` locally; nothing is uploaded.
+- The system monitor reads `/proc` and `/sys` locally, only while its window is open or while you chose tray metrics (`monitor_tray_items`, off by default), and sends nothing anywhere. Quitting a process sends it a signal (SIGTERM, or SIGKILL when you press Force Quit).
 - Your recent picks are stored in `~/.local/share/menew/recents.json` (item ids only, never copied text); scripts, quick links and world clocks live in `~/.local/share/menew/scripts` and `~/.config/menew/config.json`.
 - "Clear history" in the tray deletes every unpinned entry and the image files that go with them.
 - Notes live in `~/.local/share/menew/notes/notes.json` (the same format as the Mac). **Normal notes are plain text in that file.** Protected and password notes keep only their title there: the rest is in the Secret Service of your keyring (`application=app.menew.Menew`), never in a plain file. Opening one asks for your password through polkit; where the polkit policy is not installed (AppImage) or there is no authentication agent, the keyring unlocked at login is the only protection, and the notes window says so.

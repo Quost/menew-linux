@@ -75,6 +75,9 @@ pub mod snapshot;
 pub mod notes_view;
 #[cfg(target_os = "linux")]
 pub mod screen;
+pub mod monitor_view;
+#[cfg(target_os = "linux")]
+pub use monitor_view::{MonitorWidget, MonitorWindow};
 
 #[cfg(target_os = "linux")]
 pub mod palette {
@@ -211,6 +214,7 @@ pub mod palette {
         visible_passwords: Rc<RefCell<Vec<menew_core::notes::Note>>>,
         notes: Rc<crate::notes_view::NotesApp>,
         screen: Rc<crate::screen::ScreenApp>,
+        monitor_win: Rc<RefCell<Option<Rc<crate::monitor_view::MonitorWindow>>>>,
         /// Set while the widgets are changed by code, so their handlers do not run.
         syncing: Cell<bool>,
         thumbs: RefCell<HashMap<String, gdk::Texture>>,
@@ -496,6 +500,7 @@ pub mod palette {
                 visible_passwords: Rc::new(RefCell::new(Vec::new())),
                 notes,
                 screen,
+                monitor_win: Rc::new(RefCell::new(None)),
                 syncing: Cell::new(false),
                 thumbs: RefCell::new(HashMap::new()),
             });
@@ -1387,6 +1392,7 @@ pub mod palette {
                 ItemAction::NewPasswordsNote => {
                     self.notes.new_passwords();
                 }
+                ItemAction::OpenMonitor => self.open_monitor(),
                 ItemAction::PauseClipboard(m) => self.pause_clipboard(m),
                 ItemAction::ResumeClipboard => self.resume_clipboard(),
                 ItemAction::ToggleQueue => self.toggle_queue(),
@@ -1998,6 +2004,22 @@ pub mod palette {
 
         /// Paste a snippet (or only copy it): ask its `{input:}` fields, fill in the variables, put it
         /// on the clipboard without keeping it in the history, and move the cursor to `{cursor}`.
+        /// Open the system monitor window (created on first use; it samples only while visible).
+        pub fn open_monitor(&self) {
+            let win = Rc::clone(self.monitor_win.borrow_mut().get_or_insert_with(|| {
+                crate::monitor_view::MonitorWindow::new(&self.app, menew_core::current_language())
+            }));
+            info!("Monitor window presented");
+            win.show();
+        }
+
+        /// Test hook: hide the monitor window (its sampling stops).
+        pub fn close_monitor(&self) {
+            if let Some(win) = self.monitor_win.borrow().as_ref() {
+                win.window.set_visible(false);
+            }
+        }
+
         pub fn notes(&self) -> &Rc<crate::notes_view::NotesApp> {
             &self.notes
         }

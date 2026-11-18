@@ -106,6 +106,7 @@ pub enum ItemAction {
     OpenNote(String),
     NewNote,
     NewPasswordsNote,
+    OpenMonitor,
     /// Pause the capture for that many minutes, or until resumed.
     PauseClipboard(Option<u32>),
     ResumeClipboard,
@@ -166,6 +167,7 @@ impl ItemAction {
             ItemAction::OpenNote(id) => format!("open-note:{id}"),
             ItemAction::NewNote => "new-note".into(),
             ItemAction::NewPasswordsNote => "new-passwords-note".into(),
+            ItemAction::OpenMonitor => "open-monitor".into(),
             ItemAction::PauseClipboard(Some(m)) => format!("pause-clipboard:{m}"),
             ItemAction::PauseClipboard(None) => "pause-clipboard".into(),
             ItemAction::ResumeClipboard => "resume-clipboard".into(),
@@ -574,6 +576,13 @@ fn commands(ctx: &PaletteContext) -> Vec<PaletteItem> {
             .kw("update updates upgrade atualizar atualizacao atualizações aktualisieren actualizar actualización 更新 version versão")
             .icon(Icon::Symbol("software-update-available-symbolic"))
             .act(ItemAction::CheckUpdates),
+    );
+    out.push(
+        PaletteItem::new("action.monitor", Kind::Action, &tr("act_monitor", lang, &[]))
+            .subtitle(&tr("act_monitor_sub", lang, &[]))
+            .kw("sistema system cpu memória memory ram bateria battery rede network monitor")
+            .icon(Icon::Symbol("utilities-system-monitor-symbolic"))
+            .act(ItemAction::OpenMonitor),
     );
     out.push(
         PaletteItem::new("action.quit", Kind::Action, &tr("act_quit", lang, &[]))

@@ -98,6 +98,13 @@ pub fn t_in(key: &'static str, lang: Language) -> &'static str {
             Language::Zh => "打开命令面板",
             Language::En => "Open Command Palette",
         },
+        "tray_monitor" => match lang {
+            Language::Pt => "Monitor do Sistema",
+            Language::De => "Systemmonitor",
+            Language::Es => "Monitor del Sistema",
+            Language::Zh => "系统监控",
+            Language::En => "System Monitor",
+        },
         "tray_quit" => match lang {
             Language::Pt => "Sair do Menew",
             Language::De => "Menew beenden",
