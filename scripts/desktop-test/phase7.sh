@@ -36,7 +36,7 @@ phase7_checks() {
     convert -font DejaVu-Sans -background white -fill black -pointsize 64 label:$'FIRST LINE\nSECOND LINE' "$T/text2.png"
     convert -size 600x300 xc:white "$T/blank.png"
     convert -size 400x300 gradient:'#d02020-#2030d0' -seed 7 -attenuate 0.6 +noise Gaussian \
-        \( -background none -fill white -pointsize 36 label:"SECRET 1234" \) -geometry +20+80 -composite -depth 8 -alpha off "PNG24:$T/base.png"
+        \( -font DejaVu-Sans -background none -fill white -pointsize 36 label:"SECRET 1234" \) -geometry +20+80 -composite -depth 8 -alpha off "PNG24:$T/base.png"
     if [ -s "$T/text1.png" ] && [ -s "$T/base.png" ]; then pass "phase 7 fixtures made (text images, a noisy 400x300 picture)"; else fail "ImageMagick could not make the phase 7 fixtures"; return; fi
 
     # ---- (a) copy text from the screen: OCR of a generated image with a known text ----
