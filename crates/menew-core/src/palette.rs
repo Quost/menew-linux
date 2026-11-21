@@ -128,6 +128,9 @@ pub enum ItemAction {
     QrShow(Option<String>),
     /// Show the QR window in its Wi-Fi mode.
     QrWifi,
+    /// A command run by the daemon (quick actions `qa.*`, notes `note.*`, screenshots `cap.*`,
+    /// windows `win.*`, the Menew window `win.open:*`...), see `crates/menew/src/commands.rs`.
+    Command(String),
 }
 
 impl ItemAction {
@@ -180,6 +183,7 @@ impl ItemAction {
             ItemAction::QrShow(None) => "qr-show".into(),
             ItemAction::QrShow(Some(t)) => format!("qr-show:{t}"),
             ItemAction::QrWifi => "qr-wifi".into(),
+            ItemAction::Command(c) => format!("command:{c}"),
         }
     }
 }
@@ -287,6 +291,9 @@ pub struct PaletteContext<'a> {
     pub clip: ClipContext<'a>,
     /// The notes: protected ones have only their title in `text`.
     pub notes: &'a [Note],
+    /// Items of the other features (quick actions, notes, screenshots, windows), already built for
+    /// the text typed. They are searched and ranked like the Menew actions.
+    pub extra: &'a [PaletteItem],
 }
 
 const SUGGESTIONS: [&str; 4] = ["action.clipboard", "action.focus", "action.clearclip", "action.uuid"];
@@ -590,6 +597,7 @@ fn commands(ctx: &PaletteContext) -> Vec<PaletteItem> {
             .icon(Icon::Symbol("application-exit-symbolic"))
             .act(ItemAction::Quit),
     );
+    out.extend(ctx.extra.iter().cloned());
     for app in ctx.apps {
         let sub = app.generic_name.as_deref().or(app.comment.as_deref()).unwrap_or("");
         let kw = format!("{} {}", app.keywords.join(" "), app.generic_name.clone().unwrap_or_default());
@@ -769,6 +777,7 @@ mod tests {
             autostart_on: false,
             clip: Default::default(),
             notes: &[],
+            extra: &[],
         };
         results(&ctx, query, &|_| vec![])
     }
@@ -847,6 +856,7 @@ mod tests {
             autostart_on: false,
             clip: Default::default(),
             notes: &[],
+            extra: &[],
         };
         let out = results(&ctx, "appy", &|_| vec![]);
         assert_eq!(out.len(), MAX_RESULTS + 1);
@@ -872,6 +882,7 @@ mod tests {
             autostart_on: false,
             clip: Default::default(),
             notes: &[],
+            extra: &[],
         };
         let hit = |id: i64, t: &str| ClipHit { id, title: t.into(), text: t.into(), kind: ClipKind::Text };
         let out = results(&ctx, "history", &|_| vec![hit(1, "my history notes")]);

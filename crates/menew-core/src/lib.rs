@@ -20,6 +20,7 @@ pub mod markdown;
 pub mod monitor;
 pub mod notes;
 pub mod palette;
+pub mod quick_actions;
 pub mod ocr;
 pub mod paste;
 pub mod paste_queue;
@@ -31,11 +32,14 @@ pub mod search;
 pub mod sha256;
 pub mod snippets;
 pub mod strings;
+mod strings_r1;
+pub mod sys;
 pub mod text_transforms;
 pub mod time_zones;
 pub mod timers;
 #[cfg(unix)]
 pub mod updates;
+pub mod windows;
 
 pub use calculator::{evaluate, CalcResult};
 pub use clipboard_db::{ClipKind, ClipboardDatabase, ClipboardEntry};

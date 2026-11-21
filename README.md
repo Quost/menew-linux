@@ -181,6 +181,18 @@ Every file in `~/.local/share/menew/scripts` (shell, Python, Node, Ruby) becomes
 </details>
 
 <details>
+<summary>🪟 <b>Windows and quick actions</b>: <code>window left</code>, <code>mute</code>, <code>dark mode</code>, <code>awake 2h</code>, <code>port 3000</code></summary>
+
+- **Window snapping** with the Mac's 17 positions (halves, corners, thirds, two thirds, center, almost full, fill, next display) from the palette, <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>←</kbd>/<kbd>→</kbd>/<kbd>↑</kbd>/<kbd>↓</kbd> and <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Enter</kbd>. KDE Plasma moves the window through a KWin script; GNOME needs the bundled Menew extension (version 2: log out and in after updating it).
+- **Microphone and sound**: mute or unmute (<kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>M</kbd> for the mic), and switch the output or input device (`pactl`, PipeWire or PulseAudio).
+- **Dark mode**, **keep awake** (`awake 2h`, `acordado 90m`, or until you turn it off), **lock screen**, **empty trash** (asks first), **color picker** (the `#RRGGBB` is copied), **plain text clipboard**, **eject disks**, **brightness** (`brightness 40`, also external displays with `ddcutil`).
+- **Quit apps**: `quit firefox`, `kill firefox` (force), "Quit all apps" skips the apps in `never_quit` (`config.json`). Wayland has no way to ask an app to close its windows, so Menew sends it a signal.
+- **Ports in use**: `port 3000` shows the server listening there and <kbd>Enter</kbd> stops it.
+- Every action also runs from a terminal or a custom shortcut: `menew run qa.mic`, `menew run win.left`, `menew run note.new`.
+
+</details>
+
+<details>
 <summary>🔔 <b>Tray icon and start at login</b></summary>
 
 The tray has Open palette, Clipboard history, Clear history (keeps pinned entries), Start at login and Quit. **Start at login** is opt-in (off by default): it creates `~/.config/autostart/menew.desktop`, and unchecking it in the tray removes the file again.
@@ -194,7 +206,7 @@ The language follows `LC_ALL` / `LANG`.
 
 </details>
 
-Not here yet (see [docs/parity.md](docs/parity.md)): Memory, recordings, pinning a screenshot on the screen, screen recording, scrolling capture, asking about the screen, window management, on-device AI and agents. They are on the roadmap of the Mac app and will come to Linux as far as the platform allows.
+Not here yet (see [docs/parity.md](docs/parity.md)): Memory, recordings, pinning a screenshot on the screen, screen recording, scrolling capture, asking about the screen, on-device AI and agents. They are on the roadmap of the Mac app and will come to Linux as far as the platform allows.
 
 ## Install
 
@@ -240,6 +252,10 @@ cargo run -p menew
 | <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>N</kbd> | Paste the next item of the paste queue |
 | <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>S</kbd> | Capture the screen and annotate it |
 | <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>T</kbd> | Copy the text of an area of the screen |
+| <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>M</kbd> | Mute or unmute the microphone |
+| <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Shift</kbd> <kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> | Snap the window to that half |
+| <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>Enter</kbd> | Make the window fill the screen |
+| <kbd>Ctrl</kbd> <kbd>Alt</kbd> <kbd>J</kbd> | New note |
 | <kbd>Ctrl</kbd> <kbd>Z</kbd> / <kbd>Ctrl</kbd> <kbd>S</kbd> / <kbd>Ctrl</kbd> <kbd>C</kbd> | In the editor: undo / save / copy |
 | <kbd>Tab</kbd> | Switch between Apps and Clipboard in the palette |
 | <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>Enter</kbd> / <kbd>Esc</kbd> | Move / run or copy / close |
@@ -264,6 +280,7 @@ The app has **no telemetry, no analytics and no account**, and makes no network 
 - Your recent picks are stored in `~/.local/share/menew/recents.json` (item ids only, never copied text); scripts, quick links and world clocks live in `~/.local/share/menew/scripts` and `~/.config/menew/config.json`.
 - "Clear history" in the tray deletes every unpinned entry and the image files that go with them.
 - Notes live in `~/.local/share/menew/notes/notes.json` (the same format as the Mac). **Normal notes are plain text in that file.** Protected and password notes keep only their title there: the rest is in the Secret Service of your keyring (`application=app.menew.Menew`), never in a plain file. Opening one asks for your password through polkit; where the polkit policy is not installed (AppImage) or there is no authentication agent, the keyring unlocked at login is the only protection, and the notes window says so.
+- Quick actions and window snapping run your desktop's own tools locally (`pactl`, `gsettings`, `systemd-inhibit`, `loginctl`, `gio`, `lsblk`, `udisksctl`, `ddcutil`, a KWin script or the Menew GNOME extension) and send nothing anywhere. The color picker goes through the screenshot portal and keeps only the color.
 - The optional paste simulation only writes a <kbd>Ctrl</kbd> <kbd>V</kbd> key press to `/dev/uinput`; it never reads keyboard input.
 
 ## FAQ

@@ -228,6 +228,8 @@ source "$HERE/phase7.sh"
 if [ "$PIPELINE_OK" = "1" ]; then phase7_checks; else skip "Phase 7 checks need the wl-copy pipeline (see SKIP above)"; fi
 source "$HERE/phase10.sh"
 phase10_checks
+source "$HERE/actions.sh"
+actions_checks
 
 # check 4: quit leaves no wl-paste
 "$MENEW_BIN" quit >/dev/null 2>&1 || true

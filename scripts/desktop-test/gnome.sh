@@ -217,6 +217,8 @@ source "$HERE/phase7.sh"
 phase7_checks
 source "$HERE/phase10.sh"
 phase10_checks
+source "$HERE/actions.sh"
+actions_checks
 
 echo "----"
 if [ "$FAILS" -eq 0 ]; then echo "RESULT: all checks passed"; else echo "RESULT: $FAILS check(s) FAILED"; fi

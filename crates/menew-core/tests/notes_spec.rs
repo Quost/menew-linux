@@ -226,6 +226,7 @@ fn palette_notes(notes: &[Note], query: &str) -> Vec<menew_core::palette::Palett
         autostart_on: false,
         clip: Default::default(),
         notes,
+        extra: &[],
     };
     results(&ctx, query, &|_| vec![])
 }
