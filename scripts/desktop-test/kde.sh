@@ -212,7 +212,7 @@ if [ "$PIPELINE_OK" = "1" ]; then
     mkdir -p "$TEST_ROOT/fakebin2"
     printf '#!/bin/sh\n[ "$1" = "--list-types" ] && { printf "image/png\nx-kde-passwordManagerHint\n"; exit 0; }\ncat "$STUB_DATA"\n' > "$TEST_ROOT/fakebin2/wl-paste"
     chmod +x "$TEST_ROOT/fakebin2/wl-paste"
-    convert -background white -fill black -pointsize 40 label:"HINTED IMAGE" "$TEST_ROOT/hinted.png"
+    convert -font DejaVu-Sans -background white -fill black -pointsize 40 label:"HINTED IMAGE" "$TEST_ROOT/hinted.png"
     imgs_before="$(count_kind image)"; files_before="$(ls "$(images_dir)" | wc -l)"
     : | STUB_DATA="$TEST_ROOT/hinted.png" PATH="$TEST_ROOT/fakebin2:$PATH" "$MENEW_BIN" __clipboard-push 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | sed 's/^/INFO: helper: /' || true
     sleep 1

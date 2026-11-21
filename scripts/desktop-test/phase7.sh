@@ -32,8 +32,8 @@ phase7_checks() {
     local link='https://example.com/phase7?x=1&y=2' wifi='WIFI:T:WPA;S:Casa;P:secret;;'
 
     # ---- fixtures: images made with ImageMagick, QR codes made by the app ----
-    convert -background white -fill black -pointsize 64 label:"MENEW CAPTURE" "$T/text1.png"
-    convert -background white -fill black -pointsize 64 label:$'FIRST LINE\nSECOND LINE' "$T/text2.png"
+    convert -font DejaVu-Sans -background white -fill black -pointsize 64 label:"MENEW CAPTURE" "$T/text1.png"
+    convert -font DejaVu-Sans -background white -fill black -pointsize 64 label:$'FIRST LINE\nSECOND LINE' "$T/text2.png"
     convert -size 600x300 xc:white "$T/blank.png"
     convert -size 400x300 gradient:'#d02020-#2030d0' -seed 7 -attenuate 0.6 +noise Gaussian \
         \( -background none -fill white -pointsize 36 label:"SECRET 1234" \) -geometry +20+80 -composite -depth 8 -alpha off "PNG24:$T/base.png"
