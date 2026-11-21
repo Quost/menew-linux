@@ -11,7 +11,22 @@ pub enum ShortcutEvent {
     Capture,
     /// Capture an area and copy the text in it (the Mac's Ctrl+Option+Cmd+T).
     CaptureText,
+    /// A daemon command (`qa.mic`, `win.left`, `note.new`...), the same ids the palette uses.
+    Command(String),
 }
+
+/// The shortcuts besides the palette, clipboard, paste queue and the two screen ones: (portal id, description key,
+/// preferred trigger, daemon command). The Mac uses Control+Option+Command; Linux uses
+/// Control+Alt (+Shift where Control+Alt is taken, like Control+Alt+T for the terminal).
+pub const COMMAND_SHORTCUTS: [(&str, &str, &str, &str); 7] = [
+    ("mute_mic", "sc_mute_mic", "Control+Alt+M", "qa.mic"),
+    ("snap_left", "sc_snap_left", "Control+Alt+Shift+Left", "win.left"),
+    ("snap_right", "sc_snap_right", "Control+Alt+Shift+Right", "win.right"),
+    ("snap_top", "sc_snap_top", "Control+Alt+Shift+Up", "win.top"),
+    ("snap_bottom", "sc_snap_bottom", "Control+Alt+Shift+Down", "win.bottom"),
+    ("snap_max", "sc_snap_max", "Control+Alt+Return", "win.max"),
+    ("new_note", "sc_new_note", "Control+Alt+J", "note.new"),
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PortalShortcutStatus {
@@ -74,12 +89,12 @@ mod linux_impl {
         let capture_text_shortcut = NewShortcut::new("capture_text", menew_core::strings::tr("shortcut_capture_text_desc", lang, &[]))
             .preferred_trigger(Some("Control+Alt+Shift+T"));
 
+        let mut all = vec![shortcut, clipboard_shortcut, paste_next_shortcut, capture_shortcut, capture_text_shortcut];
+        for (id, key, trigger, _) in COMMAND_SHORTCUTS {
+            all.push(NewShortcut::new(id, menew_core::strings::tr(key, lang, &[])).preferred_trigger(Some(trigger)));
+        }
         let response = match global_shortcuts
-            .bind_shortcuts(
-                &session,
-                &[shortcut, clipboard_shortcut, paste_next_shortcut, capture_shortcut, capture_text_shortcut],
-                Default::default(),
-            )
+            .bind_shortcuts(&session, &all, Default::default())
             .await
         {
             Ok(r) => match r.response() {
@@ -127,7 +142,11 @@ mod linux_impl {
                     "capture_text" => {
                         let _ = tx.send(ShortcutEvent::CaptureText);
                     }
-                    _ => {}
+                    other => {
+                        if let Some((_, _, _, cmd)) = COMMAND_SHORTCUTS.iter().find(|c| c.0 == other) {
+                            let _ = tx.send(ShortcutEvent::Command(cmd.to_string()));
+                        }
+                    }
                 }
             }
         });
@@ -168,6 +187,10 @@ mod linux_impl {
         eprintln!("     Name:     Menew Text from Screen");
         eprintln!("     Command:  menew capture-text");
         eprintln!("     Shortcut: Ctrl+Alt+Shift+T");
+        eprintln!("   Every other Menew shortcut is `menew run <command>`:");
+        for (_, key, trigger, cmd) in COMMAND_SHORTCUTS {
+            eprintln!("     {:<28} menew run {:<10} {}", menew_core::strings::tr(key, menew_core::current_language(), &[]), cmd, trigger.replace("Control", "Ctrl"));
+        }
         eprintln!("====================================================================");
         eprintln!();
     }

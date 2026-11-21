@@ -42,6 +42,8 @@ pub struct Config {
     pub auto_update_check: bool,
     /// Metrics shown in the tray Title and ToolTip, from `cpu cpuGraph ram net disk battery` (the Mac's `menuBarItems`). Empty (the default) samples nothing until the settings window of Phase 11 lets the user opt in.
     pub monitor_tray_items: Vec<String>,
+    /// Apps "Quit all apps" never closes (`neverQuit` on the Mac): desktop ids or program names.
+    pub never_quit: Vec<String>,
 }
 
 impl Default for Config {
@@ -57,6 +59,7 @@ impl Default for Config {
             clipboard_ocr: true,
             auto_update_check: true,
             monitor_tray_items: Vec::new(),
+            never_quit: vec![],
         }
     }
 }

@@ -6,6 +6,8 @@ mod updater;
 mod updater_cli;
 mod portal;
 #[cfg(target_os = "linux")]
+mod commands;
+#[cfg(target_os = "linux")]
 use std::cell::RefCell;
 #[cfg(target_os = "linux")]
 use std::rc::Rc;
@@ -50,6 +52,8 @@ enum Action {
     PaletteActivate(usize),
     /// Paste the next item of the paste queue.
     PasteNext,
+    /// `menew run <command>`: the same ids as the palette and the shortcuts (`qa.mic`, `win.left`...).
+    Run(String),
     /// Test hook: show the clipboard list with this filter and search text, log it.
     ClipboardView(String, String),
     /// Open the notes window.
@@ -100,6 +104,11 @@ fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
     // the test hooks come first: their text argument may be a word like "quit"
     if let Some(action) = test_mode.then(|| test_action(args)).flatten() {
         return action;
+    }
+    if let Some(p) = args.iter().position(|a| a == "run") {
+        if let Some(c) = args.get(p + 1) {
+            return Action::Run(c.clone());
+        }
     }
     if args.iter().any(|a| a == "quit") {
         Action::Quit
@@ -350,7 +359,10 @@ fn run_gtk_app(args: Vec<String>) {
     let watcher_cell: Rc<RefCell<Option<Rc<RefCell<menew_clipboard::WatcherControl>>>>> =
         Rc::new(RefCell::new(None));
 
+    let commands_cell: Rc<RefCell<Option<Rc<commands::Commands>>>> = Rc::new(RefCell::new(None));
+
     // connect_startup is guaranteed to execute ONLY on the primary instance
+    let c_startup = Rc::clone(&commands_cell);
     let p_startup = Rc::clone(&palette_cell);
     let u_startup = Rc::clone(&updater_cell);
     let rt_startup = Arc::clone(&rt);
@@ -456,8 +468,18 @@ fn run_gtk_app(args: Vec<String>) {
             });
         });
         let screen = menew_ui::screen::ScreenApp::new(application, portal);
-        let palette = menew_ui::PaletteWindow::create(application, db.clone(), Rc::clone(&state), Rc::clone(&push_status), hooks, notes, screen);
+        let palette = menew_ui::PaletteWindow::create(application, db.clone(), Rc::clone(&state), Rc::clone(&push_status), hooks, Rc::clone(&notes), screen);
         *p_startup.borrow_mut() = Some(Rc::clone(&palette));
+        let cmds = commands::Commands::new(Rc::clone(&palette), Arc::clone(&rt_startup));
+        // `note.new` (the Ctrl+Alt+J shortcut and `menew run note.new`) opens a new note
+        cmds.add_runner(Rc::new(move |c: &str| {
+            if c != "note.new" {
+                return false;
+            }
+            notes.new_note();
+            true
+        }));
+        *c_startup.borrow_mut() = Some(Rc::clone(&cmds));
         let db_tray = db.clone();
 
         // copies reach the palette (paste queue, open list) on the GTK thread
@@ -535,9 +557,11 @@ fn run_gtk_app(args: Vec<String>) {
             let state = Rc::clone(&state);
             let app = application.clone();
             let push = Rc::clone(&push_status);
+            let cmds = Rc::clone(&cmds);
             glib::timeout_add_seconds_local(1, move || {
                 let lang = menew_core::current_language();
                 alerts::tick(&app, &mut state.borrow_mut(), alerts::now(), lang);
+                cmds.tick();
                 push();
                 glib::ControlFlow::Continue
             });
@@ -602,6 +626,7 @@ fn run_gtk_app(args: Vec<String>) {
         });
 
         let p_short = Rc::clone(&palette);
+        let c_short = Rc::clone(&cmds);
         glib::MainContext::default().spawn_local(async move {
             while let Some(ev) = shortcut_rx.recv().await {
                 match ev {
@@ -610,6 +635,7 @@ fn run_gtk_app(args: Vec<String>) {
                     ShortcutEvent::PasteNext => p_short.paste_next(),
                     ShortcutEvent::Capture => p_short.screen().capture(menew_ui::screen::Purpose::Edit, true),
                     ShortcutEvent::CaptureText => p_short.screen().capture(menew_ui::screen::Purpose::Text, true),
+                    ShortcutEvent::Command(c) => c_short.run(&c),
                 }
             }
         });
@@ -625,6 +651,7 @@ fn run_gtk_app(args: Vec<String>) {
 
     // connect_command_line handles first launch and remote IPC such as `menew toggle`
     let p_cmd = Rc::clone(&palette_cell);
+    let c_cmd = Rc::clone(&commands_cell);
     let app_cmd = app.clone();
     let upd_cmd = Rc::clone(&updater_cell);
     app.connect_command_line(move |_application, cmd_line| {
@@ -649,6 +676,11 @@ fn run_gtk_app(args: Vec<String>) {
         match action {
             Action::Quit => app_cmd.quit(),
             Action::StayHidden => {}
+            Action::Run(c) => {
+                if let Some(cmds) = c_cmd.borrow().as_ref() {
+                    cmds.run(&c);
+                }
+            }
             Action::ShowClipboard => {
                 if let Some(palette) = p_cmd.borrow().as_ref() {
                     palette.show_mode(PaletteMode::Clipboard);
@@ -909,6 +941,12 @@ mod tests {
         // the hooks are plain unknown arguments without MENEW_TEST=1
         assert_eq!(decide(&v(&["__quit-process", "4242"]), true, false), Action::ShowPalette);
         assert_eq!(decide(&v(&["__quit-process", "x"]), true, true), Action::ShowPalette);
+    }
+
+    #[test]
+    fn run_takes_the_command_id() {
+        assert_eq!(decide(&v(&["run", "qa.mic"]), true, false), Action::Run("qa.mic".into()));
+        assert_eq!(decide(&v(&["run"]), true, false), Action::ShowPalette);
     }
 
     #[test]
