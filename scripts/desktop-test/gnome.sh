@@ -33,7 +33,7 @@ source "$HERE/lib.sh"
 export MENEW_DB_PATH="$TEST_ROOT/clipboard.db"
 SHELL_LOG="$TEST_ROOT/gnome-shell.log"
 MENEW_LOG="$TEST_ROOT/menew.log"
-UUID="menew-bridge@menew.web.app"
+UUID="menew-bridge@pururucos.com.br"
 SHOT="$REPO_ROOT/docs/desktop-tests/gnome-palette.png"
 
 cleanup() {
