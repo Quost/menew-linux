@@ -5,7 +5,7 @@
      like Touch ID on the Mac. The content itself lives in the Secret Service (GNOME Keyring, KWallet). -->
 <policyconfig>
   <vendor>Menew</vendor>
-  <vendor_url>https://menew.web.app</vendor_url>
+  <vendor_url>https://menew.pururucos.com.br</vendor_url>
   <action id="app.menew.Menew.unlock-note">
     <description>Open a protected note in Menew</description>
     <description xml:lang="pt">Abrir uma nota protegida no Menew</description>

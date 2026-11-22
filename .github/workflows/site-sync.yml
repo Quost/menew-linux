@@ -1,6 +1,6 @@
 name: Site sync
 
-# The /linux page of https://menew.web.app is built in the Mac repo (Quost/menew) from site/ and docs/assets/ here.
+# The /linux page of https://menew.pururucos.com.br is built in the Mac repo (Quost/menew) from site/ and docs/assets/ here.
 # This workflow tells that repo to rebuild and deploy the site when a release is published or that content changes.
 on:
   release:

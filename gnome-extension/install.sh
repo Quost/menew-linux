@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-UUID="menew-bridge@menew.web.app"
+UUID="menew-bridge@pururucos.com.br"
 DEST_DIR="${HOME}/.local/share/gnome-shell/extensions/${UUID}"
 
 echo "Installing Menew GNOME Shell extension to ${DEST_DIR}..."

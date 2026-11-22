@@ -5,6 +5,7 @@
 ### What is new
 
 - **Window snapping** with the Mac's 17 positions, from the palette (`window left`, `corner`, `third`, `center`...) and the shortcuts `Ctrl+Alt+Shift+Arrows` and `Ctrl+Alt+Enter`. On KDE Plasma it works out of the box; on GNOME it needs the Menew extension version 2 (log out and in after updating).
+- **The GNOME extension is now `menew-bridge@pururucos.com.br`** (it was `menew-bridge@menew.web.app`). Enable it with `gnome-extensions enable menew-bridge@pururucos.com.br`; if you had enabled the old one, run `gnome-extensions uninstall menew-bridge@menew.web.app` first.
 - **Quick actions** in the palette: mute the microphone (`Ctrl+Alt+M`) or the sound, switch the sound output and input, dark mode, keep awake (also `awake 2h`), lock screen, empty trash, color picker, plain text clipboard, eject disks, brightness (also external displays with `ddcutil`), quit or force quit apps (`quit firefox`, `kill firefox`, "Quit all apps" with a never-quit list) and stop a server on a port (`port 3000`).
 - **New note** with `Ctrl+Alt+J`.
 - `menew run <id>` runs any of these from a terminal or a custom shortcut (`menew run qa.mic`, `menew run win.left`, `menew run note.new`), for GNOME 45 to 47, which have no GlobalShortcuts portal.

@@ -25,14 +25,14 @@ Run the included install script:
 Or manually copy the extension files:
 
 ```bash
-mkdir -p ~/.local/share/gnome-shell/extensions/menew-bridge@menew.web.app
-cp metadata.json extension.js ~/.local/share/gnome-shell/extensions/menew-bridge@menew.web.app/
+mkdir -p ~/.local/share/gnome-shell/extensions/menew-bridge@pururucos.com.br
+cp metadata.json extension.js ~/.local/share/gnome-shell/extensions/menew-bridge@pururucos.com.br/
 ```
 
 Restart GNOME Shell (log out and back in on Wayland) and enable the extension:
 
 ```bash
-gnome-extensions enable menew-bridge@menew.web.app
+gnome-extensions enable menew-bridge@pururucos.com.br
 ```
 
 ## D-Bus Interface

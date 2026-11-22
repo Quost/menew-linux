@@ -41,8 +41,8 @@ assets = [
     ["../../data/app.menew.Menew.policy", "usr/share/polkit-1/actions/app.menew.Menew.policy", "644"],
     ["../../data/icons/hicolor/scalable/apps/menew.svg", "usr/share/icons/hicolor/scalable/apps/menew.svg", "644"],
     ["../../data/icons/hicolor/scalable/apps/menew-symbolic.svg", "usr/share/icons/hicolor/scalable/apps/menew-symbolic.svg", "644"],
-    ["../../gnome-extension/metadata.json", "usr/share/gnome-shell/extensions/menew-bridge@menew.web.app/metadata.json", "644"],
-    ["../../gnome-extension/extension.js", "usr/share/gnome-shell/extensions/menew-bridge@menew.web.app/extension.js", "644"],
+    ["../../gnome-extension/metadata.json", "usr/share/gnome-shell/extensions/menew-bridge@pururucos.com.br/metadata.json", "644"],
+    ["../../gnome-extension/extension.js", "usr/share/gnome-shell/extensions/menew-bridge@pururucos.com.br/extension.js", "644"],
     ["../../README.md", "usr/share/doc/menew/README.md", "644"],
     ["../../CHANGELOG.md", "usr/share/doc/menew/CHANGELOG.md", "644"],
 ]
