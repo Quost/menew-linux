@@ -1,6 +1,6 @@
 # Menew name and logo
 
-The Menew for Linux source code is free software under the [GNU General Public License v3](LICENSE), the same as the [Mac app](https://github.com/Quost/menew). The **name “Menew”, the Menew icon and logo, and the website menew.web.app** are not covered by that license: they identify the official app made by Matheus Quost.
+The Menew for Linux source code is free software under the [GNU General Public License v3](LICENSE), the same as the [Mac app](https://github.com/Quost/menew). The **name “Menew”, the Menew icon and logo, and the website menew.pururucos.com.br** are not covered by that license: they identify the official app made by Matheus Quost.
 
 ## You can
 
@@ -17,6 +17,6 @@ The Menew for Linux source code is free software under the [GNU General Public L
 
 ## Official downloads
 
-The official Linux builds are published only on [GitHub Releases](https://github.com/Quost/menew-linux/releases) and linked from [menew.web.app](https://menew.web.app).
+The official Linux builds are published only on [GitHub Releases](https://github.com/Quost/menew-linux/releases) and linked from [menew.pururucos.com.br](https://menew.pururucos.com.br).
 
 Questions: open an issue on GitHub.

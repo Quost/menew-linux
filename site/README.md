@@ -1,13 +1,13 @@
 # Website content
 
-The page https://menew.web.app/linux (and `/pt/linux`, `/de/linux`, `/es/linux`, `/zh/linux`) is controlled from this repository.
+The page https://menew.pururucos.com.br/linux (and `/pt/linux`, `/de/linux`, `/es/linux`, `/zh/linux`) is controlled from this repository.
 
 ## What lives here
 
 - `site/linux.json`: every text of the page, in the 5 languages (`en`, `pt`, `de`, `es`, `zh`). All languages must have the same keys; the build fails otherwise. HTML is allowed in some texts (`<code>`, `<b>`, `<span class="grad">`).
 - `docs/assets/*.png` (English) and `docs/assets/<lang>/*.png`: the screenshots the page shows. They are the same files the README uses, so there is no second copy to keep. A new screenshot only appears on the page if the template in the Mac repo (`site/linux.html`) references it.
 
-The layout and the look (`site/linux.html`) stay in the Mac repo, because `menew.web.app` is one Firebase site and the design is shared with the rest of it.
+The layout and the look (`site/linux.html`) stay in the Mac repo, because `menew.pururucos.com.br` is one Firebase site and the design is shared with the rest of it.
 
 ## What updates by itself
 
