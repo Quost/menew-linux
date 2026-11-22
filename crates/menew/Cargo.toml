@@ -11,6 +11,7 @@ menew-tray = { path = "../menew-tray" }
 menew-shortcuts = { path = "../menew-shortcuts" }
 menew-clipboard = { path = "../menew-clipboard" }
 menew-ui = { path = "../menew-ui" }
+menew-desktop = { path = "../menew-desktop" }
 tokio = { version = "1.0", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

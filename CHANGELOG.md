@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### What is new
+
+- **Window snapping** with the Mac's 17 positions, from the palette (`window left`, `corner`, `third`, `center`...) and the shortcuts `Ctrl+Alt+Shift+Arrows` and `Ctrl+Alt+Enter`. On KDE Plasma it works out of the box; on GNOME it needs the Menew extension version 2 (log out and in after updating).
+- **Quick actions** in the palette: mute the microphone (`Ctrl+Alt+M`) or the sound, switch the sound output and input, dark mode, keep awake (also `awake 2h`), lock screen, empty trash, color picker, plain text clipboard, eject disks, brightness (also external displays with `ddcutil`), quit or force quit apps (`quit firefox`, `kill firefox`, "Quit all apps" with a never-quit list) and stop a server on a port (`port 3000`).
+- **New note** with `Ctrl+Alt+J`.
+- `menew run <id>` runs any of these from a terminal or a custom shortcut (`menew run qa.mic`, `menew run win.left`, `menew run note.new`), for GNOME 45 to 47, which have no GlobalShortcuts portal.
+
+### Known limitations
+
+- Quitting apps sends a signal: Wayland can't ask an app to close its windows.
+- Snapping needs KWin or the GNOME extension; X11 sessions without either can't snap.
+- Audio devices, brightness, eject and the new shortcuts were tested only on headless GNOME Shell 46 and KWin 5.27.
+
 ## 0.1.0-alpha.2
 
 **Early preview for testers.** Screenshots with annotations, text from the screen, QR codes and the system monitor join the command palette, the clipboard history and notes. If you installed 0.1.0-alpha.1, Menew offers this update by itself.

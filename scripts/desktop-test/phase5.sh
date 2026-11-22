@@ -23,7 +23,7 @@ reads_logged() { grep -a -c 'Received clipboard\|Saved clipboard item' "$MENEW_L
 # de_copy_uris <text>, de_pause_probe
 phase5_checks() {
     local png="$TEST_ROOT/ocr.png" shot="$REPO_ROOT/docs/desktop-tests/$DE-clipboard-images.png" f want
-    convert -background white -fill black -pointsize 48 label:"MENEW OCR" "$png"
+    convert -font DejaVu-Sans -background white -fill black -pointsize 48 label:"MENEW OCR" "$png"
 
     # (a) a PNG copy is an image entry with a file on disk
     de_copy_png "$png"
@@ -121,7 +121,7 @@ phase5_checks() {
 # an image copy marked as a password, through the real D-Bus method of the daemon (all offered types are sent along)
 image_hint_dbus_test() {
     local hex before out files_before
-    convert -background white -fill black -pointsize 40 label:"SECRET IMAGE" "$TEST_ROOT/secret.png"
+    convert -font DejaVu-Sans -background white -fill black -pointsize 40 label:"SECRET IMAGE" "$TEST_ROOT/secret.png"
     hex="$(xxd -p "$TEST_ROOT/secret.png" | tr -d '\n' | sed 's/\(..\)/0x\1,/g; s/,$//')"
     before="$(count_kind image)"; files_before="$(ls "$(images_dir)" | wc -l)"
     out="$(gdbus call --session --dest org.menew.ClipboardService --object-path /org/menew/Clipboard --method org.menew.ClipboardService.PushClipboardData "image/png" "@ay [$hex]" "" "" "['image/png', 'x-kde-passwordManagerHint']" 2>&1 | cut -c1-120)"

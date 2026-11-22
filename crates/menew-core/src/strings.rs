@@ -18,7 +18,7 @@ fn column(lang: Language) -> usize {
 
 /// Translation of `key`, or `None` if the key is not in the palette table.
 pub fn lookup(key: &str, lang: Language) -> Option<&'static str> {
-    TABLE.iter().find(|(k, _)| *k == key).map(|(_, v)| v[column(lang)])
+    all().find(|(k, _)| *k == key).map(|(_, v)| v[column(lang)])
 }
 
 /// Fill `{}` / `{1}` placeholders.
@@ -70,11 +70,16 @@ pub fn tr(key: &str, lang: Language, args: &[&str]) -> String {
 
 /// Every key of the table (used by the tests).
 pub fn keys() -> impl Iterator<Item = &'static str> {
-    TABLE.iter().map(|(k, _)| *k)
+    all().map(|(k, _)| *k)
 }
 
 pub fn row(key: &str) -> Option<&'static [&'static str; 5]> {
-    TABLE.iter().find(|(k, _)| *k == key).map(|(_, v)| v)
+    all().find(|(k, _)| *k == key).map(|(_, v)| v)
+}
+
+/// The palette and clipboard table, then the release 1 table (`strings_r1.rs`).
+fn all() -> impl Iterator<Item = &'static (&'static str, [&'static str; 5])> {
+    TABLE.iter().chain(crate::strings_r1::TABLE.iter())
 }
 
 #[rustfmt::skip]
@@ -515,7 +520,7 @@ mod tests {
 
     #[test]
     fn every_key_is_filled_in_all_5_languages() {
-        for (key, row) in TABLE {
+        for (key, row) in all() {
             for (i, v) in row.iter().enumerate() {
                 assert!(!v.trim().is_empty(), "{key}: empty text for {:?}", LANGS[i]);
                 assert!(!v.contains('\u{2014}'), "{key}: em-dash in {:?}", LANGS[i]);
@@ -531,7 +536,7 @@ mod tests {
     #[test]
     fn keys_are_unique() {
         let mut seen = std::collections::HashSet::new();
-        for (k, _) in TABLE {
+        for (k, _) in all() {
             assert!(seen.insert(*k), "duplicate key {k}");
         }
     }

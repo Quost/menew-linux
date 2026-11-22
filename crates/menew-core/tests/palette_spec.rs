@@ -89,6 +89,7 @@ fn every_vector_of_the_spec_matches() {
             autostart_on: false,
             clip: Default::default(),
             notes: &[],
+            extra: &[],
         };
         let out = results(&ctx, &input, &|_| vec![]);
         executed += 1;

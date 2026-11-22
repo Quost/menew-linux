@@ -445,6 +445,7 @@ fn palette_find(lang: Language, query: &str, id: &str) -> Option<menew_core::pal
         autostart_on: false,
         clip: Default::default(),
         notes: &[],
+        extra: &[],
     };
     results(&ctx, query, &|_| vec![]).into_iter().find(|i| i.id == id)
 }

@@ -80,7 +80,7 @@ Licence: GPL-3.0-only, the same as the Mac app; name and icon under `TRADEMARK.m
 
 | Feature | Mac | Linux | R1 | Notes |
 |---|---|---|---|---|
-| Snap the front window (halves, corners, thirds, full, other display) | ✅ | 🔁 | R1 | Wayland apps can't move other windows. KWin: scripting over D-Bus. GNOME: through the Menew extension. X11: EWMH. |
+| Snap the front window (halves, corners, thirds, full, other display) | ✅ | ✅ | R1 | The Mac's 17 positions from the palette and `Ctrl+Alt+Shift+Arrows` / `Ctrl+Alt+Enter`. KWin: a script loaded over `org.kde.kwin.Scripting` (Plasma 5.27 and 6). GNOME: the Menew extension exports `org.menew.Shell` (`SnapFocused`, `MaximizeFocused`, `CenterFocused`, `MoveFocusedToNextMonitor`). Headless tests read the geometry back on both. X11 without either: not done. |
 | Drag to snap with preview | ✅ | ❌ | | Both desktops already do edge snapping natively. |
 | Quick shelf (shake to open, drag out) | ✅ | 🟡 | | A shelf window is possible; "shake while dragging" is not detectable on Wayland. |
 | Image tools (convert, resize, rotate, strip metadata) | ✅ | ⬜ | | |
@@ -93,19 +93,19 @@ Licence: GPL-3.0-only, the same as the Mac app; name and icon under `TRADEMARK.m
 
 | Feature | Mac | Linux | R1 | Notes |
 |---|---|---|---|---|
-| Mute microphone (global shortcut) / mute sound | ✅ | 🔁 | R1 | PipeWire/PulseAudio (`wpctl`). |
-| Switch audio output and input | ✅ | 🔁 | R1 | PipeWire. |
-| Dark mode toggle | ✅ | 🔁 | R1 | GNOME gsettings `color-scheme`; KDE `plasma-apply-colorscheme`. |
-| Keep awake (for a time / until / while an app runs) | ✅ | 🔁 | R1 | `org.freedesktop.ScreenSaver.Inhibit` / portal Inhibit. |
-| Lock screen | ✅ | 🔁 | R1 | `loginctl lock-session`. |
-| Empty trash | ✅ | 🔁 | R1 | `gio trash --empty`. |
-| Color picker | ✅ | 🔁 | R1 | `org.freedesktop.portal.Screenshot.PickColor`. |
-| Plain-text clipboard | ✅ | ⬜ | R1 | |
-| Eject disks | ✅ | 🔁 | R1 | UDisks2 over D-Bus. |
+| Mute microphone (global shortcut) / mute sound | ✅ | ✅ | R1 | `pactl` (PipeWire or PulseAudio), `wpctl` as fallback. `Ctrl+Alt+M`. `quick_actions.rs`. |
+| Switch audio output and input | ✅ | ✅ | R1 | `pactl -f json list sinks/sources`, `set-default-sink/source`; one palette item per other device. |
+| Dark mode toggle | ✅ | ✅ | R1 | GNOME: `gsettings` `color-scheme` (and the GTK 3 theme name). KDE: `plasma-apply-colorscheme BreezeDark/BreezeLight`, state read from `kdeglobals`. |
+| Keep awake (for a time / until / while an app runs) | ✅ | ✅ | R1 | `systemd-inhibit --what=idle:sleep` held while on; `awake 2h` / `acordado 90m` for a time; turns itself off. "While an app runs" is not ported. |
+| Lock screen | ✅ | ✅ | R1 | `loginctl lock-session`, then `org.freedesktop.ScreenSaver.Lock`, then `xdg-screensaver lock`. |
+| Empty trash | ✅ | ✅ | R1 | Confirmation first (like the Mac), then `gio trash --empty`; says so when it is already empty. |
+| Color picker | ✅ | ✅ | R1 | `org.freedesktop.portal.Screenshot.PickColor`; the `#RRGGBB` is copied. |
+| Plain-text clipboard | ✅ | ✅ | R1 | Reads the clipboard text and puts it back as plain text only. |
+| Eject disks | ✅ | ✅ | R1 | Mounted partitions of removable or hot-plugged disks from `lsblk -J`; `udisksctl unmount` (or `gio mount -u`), then `udisksctl power-off`. |
 | Hidden files / desktop icons / hide Dock | ✅ | 🟡 | | Depends on the desktop; GNOME has no desktop icons by default. |
-| Display brightness (built-in + DDC/CI) | ✅ | 🔁 | R1 | `org.freedesktop.login1.Session.SetBrightness` (backlight) + ddcutil (external). |
-| Quit apps / force quit / never-quit list | ✅ | 🟡 | R1 | Close via the toolkit is not possible on Wayland; quit by signal (SIGTERM first, apps can ask to save only if they handle it). Force quit: SIGKILL. |
-| Ports in use (stop a server) | ✅ | ⬜ | R1 | `/proc/net/tcp` + process. |
+| Display brightness (built-in + DDC/CI) | ✅ | ✅ | R1 | `brightness 40`: built-in panel through logind `SetBrightness` (no root), external displays through `ddcutil setvcp 10` when installed. |
+| Quit apps / force quit / never-quit list | ✅ | 🟡 | R1 | Running apps are matched to their desktop entries through `/proc`. `quit firefox` (SIGTERM, apps that handle it can ask to save), `kill firefox` (SIGKILL), "Quit all apps" skips the never-quit list (`never_quit` in `config.json`). Wayland has no way to ask an app to close its windows, so it is a signal, not the Mac's polite quit. |
+| Ports in use (stop a server) | ✅ | ✅ | R1 | `port 3000`: listening sockets of `/proc/net/tcp{,6}` matched to this user's processes; Enter sends SIGTERM. |
 | Presentation mode | ✅ | 🔁 | | Inhibit + do not disturb + pause clipboard. |
 | Cleaning mode (lock keyboard, black screens) | ✅ | 🟡 | | Black fullscreen windows yes; locking the keyboard needs an exclusive grab, not available on Wayland. |
 | Automations ("when X, do Y") | ✅ | ⬜ | | |
@@ -173,7 +173,7 @@ To build for R1 (grouped into relay phases in `docs/plan-mvp.md`):
 2. Clipboard: DONE in Phase 5 (images, files, filters, pause, ignore apps on GNOME, paste queue with "Paste next", smart actions, OCR, snippets). Not verified on a real desktop: that a hidden Menew may set the selection for "Paste next" (the headless test keeps the window open).
 3. Notes with protected and password notes.
 4. Screenshots: DONE in Phase 7 (capture through the portal, annotation editor with blur, copy text from the screen, QR codes). Not verified on a real desktop: the screenshot portal and its picker, the global shortcuts, dragging out of the editor.
-5. Windows: snapping via KWin script / GNOME extension.
-6. Quick actions: mic/sound/output, dark mode, keep awake, lock, trash, color picker, plain text, eject, brightness, quit apps, ports.
+5. Windows: DONE (the Mac's 17 positions through a KWin script and the GNOME extension's `org.menew.Shell`, read back by `scripts/desktop-test/actions.sh`). Not verified on a real desktop: the snapping shortcuts.
+6. Quick actions: DONE (mic/sound/output, dark mode, keep awake, lock, trash, color picker, plain text, eject, brightness, quit apps, ports). Not verified on a real desktop: audio devices, brightness, eject.
 7. System monitor with top processes and tray metrics: DONE in Phase 10 (see the rows above and `docs/monitor-spec.md`).
 8. Tray popover (Now / Actions), Menew window, settings, welcome tour, language picker, update check.
