@@ -12,7 +12,7 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install dev packages
         run: |
           sudo apt-get update
@@ -31,7 +31,7 @@ jobs:
     continue-on-error: true
     needs: check
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install dev packages and compositors
         run: |
           sudo apt-get update
@@ -46,7 +46,7 @@ jobs:
         run: MENEW_BIN="$PWD/target/debug/menew" bash scripts/desktop-test/gnome.sh
       - name: KDE
         run: MENEW_BIN="$PWD/target/debug/menew" bash scripts/desktop-test/kde.sh
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: desktop-test-screenshots
