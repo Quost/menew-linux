@@ -41,6 +41,7 @@ Native Linux productivity utility built in Rust (GTK4 + Libadwaita). Separate re
 - `crates/menew`: Main coordinator daemon and entry point.
 - `gnome-extension`: GNOME Shell extension for clipboard bridging on GNOME Wayland.
 - `docs/`: Technical findings and architecture specifications.
+- `site/content.json`: the texts of the website page https://menew.pururucos.com.br/linux in 5 languages (`en`, `pt`, `de`, `es`, `zh`, same keys in each); its screenshots are `docs/assets/**`. The site itself is built from [Quost/menew-site](https://github.com/Quost/menew-site), which polls this repo; see `site/README.md`. When a change is visible to users, update the page texts in all 5 languages in the same pull request.
 
 ## Code Quality Commands
 
