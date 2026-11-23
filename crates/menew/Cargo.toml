@@ -19,7 +19,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 libadwaita = { version = "0.7", package = "libadwaita", features = ["v1_2"] }
 gtk4 = { version = "0.9", package = "gtk4" }
-zbus = { version = "5", default-features = false, features = ["tokio"] }
+zbus = { version = "6", default-features = false, features = ["tokio"] }
 ashpd = { version = "0.10", default-features = false, features = ["tokio", "tracing"] }
 
 [package.metadata.deb]
