@@ -39,7 +39,16 @@ jobs:
           desktop-file-validate data/app.menew.Menew.desktop
           appstreamcli validate --no-net data/app.menew.Menew.metainfo.xml
 
-      - run: cargo build --release -p menew
+      - name: Check the metainfo lists this release
+        run: |
+          if ! grep -qF "<release version=\"${VERSION}\"" data/app.menew.Menew.metainfo.xml; then
+            echo "data/app.menew.Menew.metainfo.xml has no <release version=\"${VERSION}\"> entry" >&2
+            exit 1
+          fi
+
+      - run: cargo test --workspace --locked
+
+      - run: cargo build --release --locked -p menew
 
       - name: Build the .deb
         run: |

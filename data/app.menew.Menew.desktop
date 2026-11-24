@@ -2,10 +2,10 @@
 Type=Application
 Name=Menew
 Comment=Command palette and clipboard history
-Comment[pt]=Paleta de comandos e historico da area de transferencia
+Comment[pt]=Paleta de comandos e histórico da área de transferência
 Comment[de]=Befehlspalette und Zwischenablage-Verlauf
 Comment[es]=Paleta de comandos e historial del portapapeles
-Comment[zh]=命令面板和剪贴板历史
+Comment[zh_CN]=命令面板和剪贴板历史
 Exec=menew
 Icon=menew
 Terminal=false
