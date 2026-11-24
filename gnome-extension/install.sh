@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+cd "$(dirname "$(readlink -f "$0")")"
 
 UUID="menew-bridge@pururucos.com.br"
 DEST_DIR="${HOME}/.local/share/gnome-shell/extensions/${UUID}"

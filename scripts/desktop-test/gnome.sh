@@ -54,7 +54,8 @@ gsettings set org.gnome.shell disable-user-extensions false
 
 # start the headless shell (unsafe mode allows org.gnome.Shell.Screenshot)
 export XDG_SESSION_TYPE=wayland
-gnome-shell --wayland --headless --no-x11 --unsafe-mode --virtual-monitor 1280x800 >"$SHELL_LOG" 2>&1 &
+# the extension logs each copy with console.debug: show those messages so the checks below can see them
+G_MESSAGES_DEBUG="GNOME Shell" gnome-shell --wayland --headless --no-x11 --unsafe-mode --virtual-monitor 1280x800 >"$SHELL_LOG" 2>&1 &
 track $!
 
 if wait_for 30 bash -c 'for s in "$XDG_RUNTIME_DIR"/wayland-*; do [ -S "$s" ] && exit 0; done; exit 1'; then
