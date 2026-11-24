@@ -161,7 +161,9 @@ export default class MenewClipboardExtension extends Extension {
         console.log('[MenewExtension] Enabling GNOME Wayland clipboard bridge...');
         this._selectionHandlerId = 0;
         this._lastCopiedText = null;
+        this._secretSeenAt = 0;
         this._dbusProxy = null;
+        this._timeoutIds = new Set();
 
         this._initDbusProxy();
         this._startClipboardWatcher();
@@ -190,8 +192,14 @@ export default class MenewClipboardExtension extends Extension {
             this._selectionHandlerId = 0;
         }
 
+        if (this._timeoutIds) {
+            for (const id of this._timeoutIds)
+                GLib.Source.remove(id);
+            this._timeoutIds.clear();
+        }
         this._dbusProxy = null;
         this._lastCopiedText = null;
+        this._secretSeenAt = 0;
         if (this._shellNameId) {
             Gio.bus_unown_name(this._shellNameId);
             this._shellNameId = 0;
@@ -266,7 +274,7 @@ export default class MenewClipboardExtension extends Extension {
 
         // Privacy check: password manager hints, for text, images and files alike
         if (mimes.some(isSecretType)) {
-            console.log('[MenewExtension] Ignoring clipboard content marked secret by password manager');
+            console.debug('[MenewExtension] Ignoring clipboard content marked secret by password manager');
             this._secretSeenAt = GLib.get_monotonic_time();
             return;
         }
@@ -275,7 +283,7 @@ export default class MenewClipboardExtension extends Extension {
         const eventAt = GLib.get_monotonic_time();
         const nearSecret = () => this._secretSeenAt && Math.abs(this._secretSeenAt - eventAt) < 1500 * 1000;
         if (nearSecret()) {
-            console.log('[MenewExtension] Ignoring the follow-up of a secret copy');
+            console.debug('[MenewExtension] Ignoring the follow-up of a secret copy');
             return;
         }
 
@@ -288,29 +296,36 @@ export default class MenewClipboardExtension extends Extension {
         const [appId, appName] = this._focusedApp();
         // Ask first: while capture is paused (or the app is ignored) the clipboard is not read at all
         this._dbusProxy.ShouldCaptureRemote(appId, appName, (result, error) => {
+            // the extension may have been disabled while the call was on its way
+            if (!this._dbusProxy || !this._timeoutIds)
+                return;
             if (error) {
                 console.debug(`[MenewExtension] ShouldCapture failed: ${error.message}`);
                 return;
             }
             if (!result || result[0] !== true) {
-                console.log('[MenewExtension] Capture paused or app ignored: not reading the clipboard');
+                console.debug('[MenewExtension] Capture paused or app ignored: not reading the clipboard');
                 return;
             }
             // wait a moment: the secret copy that this event belongs to may be announced just after it
-            GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
+            const id = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 400, () => {
+                this._timeoutIds.delete(id);
                 if (nearSecret()) {
-                    console.log('[MenewExtension] Ignoring an event that came with a secret copy');
+                    console.debug('[MenewExtension] Ignoring an event that came with a secret copy');
                 } else {
                     this._readAndSend(mimes, appId, appName);
                 }
                 return GLib.SOURCE_REMOVE;
             });
+            this._timeoutIds.add(id);
         });
     }
 
     _readAndSend(mimes, appId, appName) {
+        if (!this._dbusProxy)
+            return;
         const clipboard = St.Clipboard.get_default();
-        console.log(`[MenewExtension] Copy offers: ${mimes.join(', ')}`);
+        console.debug(`[MenewExtension] Copy offers: ${mimes.join(', ')}`);
         const lower = mimes.map(m => m.toLowerCase());
         const hasFiles = lower.includes('text/uri-list');
         const imageType = IMAGE_TYPES.find(t => lower.includes(t));
@@ -345,7 +360,7 @@ export default class MenewClipboardExtension extends Extension {
         if (hasFiles) {
             clipboard.get_content(St.ClipboardType.CLIPBOARD, 'text/uri-list', (clip, bytes) => {
                 const raw = bytes ? new TextDecoder().decode(bytes.toArray()) : '';
-                console.log(`[MenewExtension] uri-list read: ${raw.length} characters`);
+                console.debug(`[MenewExtension] uri-list read: ${raw.length} characters`);
                 if (raw.includes('file://'))
                     this._send('text/uri-list', bytes, appId, appName, mimes);
                 else
@@ -357,9 +372,11 @@ export default class MenewClipboardExtension extends Extension {
     }
 
     _send(mime, data, appId, appName, types) {
+        if (!this._dbusProxy)
+            return;
         const bytes = data.toArray ? data.toArray() : data;
         if (bytes.length > MAX_BYTES) {
-            console.log(`[MenewExtension] Copy of ${bytes.length} bytes is over the limit, not sent`);
+            console.debug(`[MenewExtension] Copy of ${bytes.length} bytes is over the limit, not sent`);
             return;
         }
         this._dbusProxy.PushClipboardDataRemote(mime, bytes, appId, appName, types, (result, error) => {

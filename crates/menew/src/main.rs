@@ -222,7 +222,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                "menew=info,menew_tray=info,menew_shortcuts=info,menew_clipboard=info".into()
+                "warn,menew=info,menew_tray=info,menew_shortcuts=info,menew_clipboard=info".into()
             }),
         )
         .init();
@@ -369,6 +369,9 @@ fn run_gtk_app(args: Vec<String>) {
     let w_startup = Rc::clone(&watcher_cell);
     app.connect_startup(move |application| {
         info!("GApplication startup: primary instance initializing background services");
+
+        // 0. The data folder holds the clipboard history: private to this user (older versions used the umask)
+        menew_core::private_fs::tighten_data_dir(&menew_core::clipboard_db::data_dir());
 
         // 1. Open DB (shared by the clipboard service and the palette)
         let db = match ClipboardDatabase::open_default() {

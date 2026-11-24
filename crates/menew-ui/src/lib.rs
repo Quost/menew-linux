@@ -1402,7 +1402,12 @@ pub mod palette {
                 n.set_body(Some(b));
             }
             self.app.send_notification(Some(id), &n);
-            info!("Notification sent: {}{}", title, body.map(|b| format!(" / {b}")).unwrap_or_default());
+            // the title and body can hold copied text: only the id goes to the log, except in test sessions
+            if std::env::var("MENEW_TEST").map(|v| v == "1").unwrap_or(false) {
+                info!("Notification sent: {}{}", title, body.map(|b| format!(" / {b}")).unwrap_or_default());
+            } else {
+                info!("Notification sent: {id}");
+            }
         }
 
         pub fn copied(&self, text: &str) {

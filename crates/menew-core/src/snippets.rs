@@ -92,13 +92,10 @@ impl SnippetStore {
     fn save(&self) {
         let Some(path) = &self.path else { return };
         if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            let _ = crate::private_fs::create_private_dir(parent);
         }
         if let Ok(json) = serde_json::to_string_pretty(&self.snippets) {
-            let tmp = path.with_extension("json.tmp");
-            if std::fs::write(&tmp, json).is_ok() {
-                let _ = std::fs::rename(&tmp, path);
-            }
+            let _ = crate::private_fs::write_private(path, json.as_bytes());
         }
     }
 }
