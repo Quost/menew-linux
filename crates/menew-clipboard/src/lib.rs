@@ -238,14 +238,12 @@ impl ClipboardService {
 
     fn write_image(&self, name: &str, data: &[u8]) -> std::io::Result<()> {
         let dir = self.db.images_dir().ok_or_else(|| std::io::Error::other("no images folder"))?;
-        std::fs::create_dir_all(dir)?;
+        menew_core::private_fs::create_private_dir(dir)?;
         let path = dir.join(name);
         if path.exists() {
             return Ok(());
         }
-        let tmp = dir.join(format!("{name}.part"));
-        std::fs::write(&tmp, data)?;
-        std::fs::rename(&tmp, &path)
+        menew_core::private_fs::write_private(&path, data)
     }
 
     /// Keep the history inside its limits (`maxItems`, `autoDeleteDays`).

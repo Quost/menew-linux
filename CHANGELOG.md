@@ -10,6 +10,15 @@
 - **New note** with `Ctrl+Alt+J`.
 - `menew run <id>` runs any of these from a terminal or a custom shortcut (`menew run qa.mic`, `menew run win.left`, `menew run note.new`), for GNOME 45 to 47, which have no GlobalShortcuts portal.
 
+### Fixed
+
+- **Security:** the `.deb` update is now downloaded into a new private temporary folder (mode 0700, checked to belong to you) instead of a predictable one that another user of the computer could have prepared, since that file is then installed as root.
+- The data folder `~/.local/share/menew` (clipboard history, images, notes, snippets) is now private to you: folders 0700 and files 0600. Existing folders and `clipboard.db` files are fixed at startup.
+- `config.json` is written atomically, so a crash never leaves it half written.
+- The default log now keeps warnings and errors of every part of Menew, and notifications are logged by id only, never with the copied text they show.
+- GNOME extension: its pending timers are removed when it is disabled, and each copy is logged only at debug level. `install.sh` works from any folder.
+- The Portuguese description of the app has its accents back, and the metainfo lists 0.1.0-alpha.2 and says which network requests Menew makes (the optional update check and the currency rate).
+
 ### Known limitations
 
 - Quitting apps sends a signal: Wayland can't ask an app to close its windows.

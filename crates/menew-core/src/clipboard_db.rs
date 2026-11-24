@@ -100,8 +100,15 @@ impl ClipboardDatabase {
     pub fn open_default() -> Result<Self> {
         let db_path = Self::default_db_path();
         if let Some(parent) = db_path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            // the test hook can point at any folder (even /tmp): only the real data folder is made private
+            if std::env::var_os("MENEW_DB_PATH").is_some() {
+                let _ = std::fs::create_dir_all(parent);
+            } else {
+                let _ = crate::private_fs::create_private_dir(parent);
+            }
         }
+        // created 0600 first: SQLite gives its -wal and -shm files the mode of the database
+        let _ = crate::private_fs::ensure_private_file(&db_path);
         // test hook: the images go next to the temporary database
         let images = if std::env::var_os("MENEW_DB_PATH").is_some() {
             db_path.with_extension("images")

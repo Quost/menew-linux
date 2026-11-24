@@ -24,6 +24,7 @@ pub mod quick_actions;
 pub mod ocr;
 pub mod paste;
 pub mod paste_queue;
+pub mod private_fs;
 pub mod qr;
 pub mod quick_links;
 pub mod recents;

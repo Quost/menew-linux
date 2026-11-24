@@ -336,7 +336,7 @@ impl NotesStore {
 
     pub fn load_default(vault: Rc<dyn Vault>) -> Self {
         let dir = notes_dir();
-        let _ = std::fs::create_dir_all(&dir);
+        let _ = crate::private_fs::create_private_dir(&dir);
         Self::load(&dir, vault)
     }
 
@@ -522,8 +522,7 @@ impl NotesStore {
         if self.dirty {
             if let Some(path) = &self.path {
                 if let Ok(data) = serde_json::to_vec(&self.notes) {
-                    let tmp = path.with_extension("json.tmp");
-                    if std::fs::write(&tmp, &data).and_then(|_| std::fs::rename(&tmp, path)).is_ok() {
+                    if crate::private_fs::write_private(path, &data).is_ok() {
                         self.dirty = false;
                     }
                 }

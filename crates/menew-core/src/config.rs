@@ -109,11 +109,12 @@ impl Config {
 
     pub fn save_to(&self, path: &Path) -> std::io::Result<()> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+            crate::private_fs::create_private_dir(parent)?;
         }
         let json = serde_json::to_string_pretty(self)
             .map_err(std::io::Error::other)?;
-        std::fs::write(path, json + "\n")
+        // atomic: a crash while writing never leaves a half-written config.json
+        crate::private_fs::write_private(path, (json + "\n").as_bytes())
     }
 }
 

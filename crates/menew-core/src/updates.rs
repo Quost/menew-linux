@@ -639,6 +639,35 @@ pub fn install_deb(file: &Path) -> Result<(), InstallError> {
     }
 }
 
+/// Create a new folder `<base>/<prefix><random>` with mode 0700 (the semantics of `mkdtemp`): the name must
+/// not exist yet, so a folder or symlink planted by another user is never reused, and the result is checked
+/// to be a real folder owned by this user and private to it.
+pub fn private_temp_dir(base: &Path, prefix: &str) -> std::io::Result<PathBuf> {
+    use std::os::unix::fs::{DirBuilderExt, MetadataExt, PermissionsExt};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let uid = unsafe { libc::geteuid() };
+    for attempt in 0u32..64 {
+        let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let seed = format!("{}-{nanos}-{attempt}-{:p}", std::process::id(), &attempt);
+        let name = format!("{prefix}{}", &hex(&sha256(seed.as_bytes()))[..16]);
+        let dir = base.join(name);
+        match std::fs::DirBuilder::new().mode(0o700).create(&dir) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(e),
+        }
+        let meta = std::fs::symlink_metadata(&dir)?;
+        if !meta.file_type().is_dir() || meta.uid() != uid {
+            return Err(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "temporary folder is not ours"));
+        }
+        if meta.permissions().mode() & 0o777 != 0o700 {
+            std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700))?;
+        }
+        return Ok(dir);
+    }
+    Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "no free temporary folder name"))
+}
+
 /// Download, verify and install `found` the way `method` says. `on_stage` is told "download" before the
 /// download (the window shows it). The `.deb` file is kept in a private temporary folder.
 pub fn install(found: &Found, method: &InstallMethod, feed: &Feed, on_stage: &dyn Fn(&str)) -> Result<(), InstallError> {
@@ -668,15 +697,16 @@ pub fn install(found: &Found, method: &InstallMethod, feed: &Feed, on_stage: &dy
         }
         InstallMethod::Deb => {
             use std::os::unix::fs::PermissionsExt;
-            // apt runs as root and as `_apt`: a folder everyone can read, private to the user for writing
-            let dir = std::env::temp_dir().join(format!("menew-update-{}", std::process::id()));
-            std::fs::create_dir_all(&dir).map_err(|e| InstallError::Failed(e.to_string()))?;
-            let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755));
+            // a fresh folder only this user can write to (never one that already exists: another user could
+            // have planted it, or a symlink in it, and the file below is installed as root)
+            let dir = private_temp_dir(&std::env::temp_dir(), "menew-update-").map_err(|e| InstallError::Failed(e.to_string()))?;
             let file = dir.join(format!("menew_{version}_amd64.deb"));
             let result = (|| {
                 download(&art.url, &file, feed.overridden).map_err(InstallError::Verify)?;
                 verify_artifact(&file, &version, kind, art, &feed.public_key).map_err(InstallError::Verify)?;
+                // apt reads the file as `_apt` too: readable by everyone, still writable only by this user
                 let _ = std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644));
+                let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755));
                 on_stage("install");
                 install_deb(&file)
             })();
@@ -770,5 +800,22 @@ mod tests {
         let args: Vec<String> = c.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         assert_eq!(args[2], "menew-restart");
         assert_eq!(&args[3..], ["42", "/x/Menew.AppImage"]);
+    }
+
+    #[test]
+    fn private_temp_dir_is_new_and_private() {
+        use std::os::unix::fs::PermissionsExt;
+        let base = tempfile::tempdir().unwrap();
+        // an "attacker" folder with the old predictable name, open to everyone, is never reused
+        let planted = base.path().join(format!("menew-update-{}", std::process::id()));
+        std::fs::create_dir(&planted).unwrap();
+        std::fs::set_permissions(&planted, std::fs::Permissions::from_mode(0o777)).unwrap();
+        let a = private_temp_dir(base.path(), "menew-update-").unwrap();
+        let b = private_temp_dir(base.path(), "menew-update-").unwrap();
+        assert_ne!(a, planted);
+        assert_ne!(a, b);
+        assert!(std::fs::read_dir(&a).unwrap().next().is_none());
+        let mode = std::fs::metadata(&a).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o700);
     }
 }
