@@ -27,6 +27,7 @@
     <binary>menew</binary>
   </provides>
   <releases>
+    <release version="0.1.0-alpha.3" date="2026-11-27"/>
     <release version="0.1.0-alpha.2" date="2026-11-18"/>
     <release version="0.1.0-alpha.1" date="2026-11-14"/>
   </releases>

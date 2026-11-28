@@ -85,6 +85,8 @@ pub mod monitor_view;
 pub use monitor_view::{MonitorWidget, MonitorWindow};
 #[cfg(target_os = "linux")]
 pub mod dialogs;
+#[cfg(target_os = "linux")]
+pub mod welcome;
 
 #[cfg(target_os = "linux")]
 pub mod palette {

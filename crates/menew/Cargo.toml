@@ -29,9 +29,7 @@ copyright = "2026, Matheus Quost"
 license-file = ["../../LICENSE", "0"]
 section = "utils"
 priority = "optional"
-extended-description = """\
-Private, native command palette, clipboard history and notes for GNOME and KDE Plasma on Wayland.
-The GNOME Shell clipboard extension is installed but not enabled; enable it yourself."""
+extended-description = "Private, native command palette, clipboard history, screenshots, notes and system monitor for GNOME and KDE Plasma on Wayland, with no telemetry and no account. On its first start Menew sets itself up: start at login, its GNOME Shell extension (active after logging out and in again) and, on GNOME 45 to 47, the keyboard shortcuts."
 depends = "$auto, curl"
 recommends = "wl-clipboard, fonts-noto-color-emoji, tesseract-ocr, tesseract-ocr-eng, gnome-keyring | kwalletmanager, polkitd, xdg-desktop-portal"
 assets = [

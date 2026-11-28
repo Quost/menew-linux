@@ -543,6 +543,13 @@ fn commands(ctx: &PaletteContext) -> Vec<PaletteItem> {
         .icon(Icon::Symbol("system-run-symbolic"))
         .act(ItemAction::ToggleAutostart),
     );
+    // the Mac opens its welcome tour from the menu; here it is an action of the palette
+    out.push(
+        PaletteItem::new("action.welcome", Kind::Action, &tr("act_welcome", lang, &[]))
+            .kw("welcome setup tour onboarding boas-vindas configurar configuração willkommen einrichtung bienvenida configuración 欢迎 设置")
+            .icon(Icon::Symbol("help-about-symbolic"))
+            .act(ItemAction::Command("app.welcome".into())),
+    );
     if ctx.focus_running {
         out.push(
             PaletteItem::new("action.focusextend", Kind::Action, &tr("tray_focus_extend", lang, &[]))

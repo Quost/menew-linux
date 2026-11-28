@@ -30,6 +30,7 @@ pub mod quick_links;
 pub mod recents;
 pub mod script_commands;
 pub mod search;
+pub mod setup;
 pub mod sha256;
 pub mod snippets;
 pub mod strings;
