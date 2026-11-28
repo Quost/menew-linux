@@ -12,4 +12,4 @@ futures-util = "0.3"
 tracing = "0.1"
 
 [target.'cfg(target_os = "linux")'.dependencies]
-ashpd = { version = "0.10", default-features = false, features = ["tokio", "tracing"] }
+ashpd = { version = "0.14", default-features = false, features = ["tokio", "tracing"] }
