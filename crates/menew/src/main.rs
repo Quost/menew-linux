@@ -8,6 +8,8 @@ mod portal;
 #[cfg(target_os = "linux")]
 mod commands;
 #[cfg(target_os = "linux")]
+mod setup;
+#[cfg(target_os = "linux")]
 use std::cell::RefCell;
 #[cfg(target_os = "linux")]
 use std::rc::Rc;
@@ -37,6 +39,10 @@ use menew_tray::{TrayCommand, TrayStatus};
 enum Action {
     /// Start in the background (tray only), palette hidden.
     StayHidden,
+    /// `menew open`, the app icon: the palette, or the welcome window on the first run.
+    Open,
+    /// `menew welcome`: the welcome window, from its setup page.
+    ShowWelcome,
     ShowPalette,
     TogglePalette,
     /// Open the palette in clipboard mode.
@@ -112,6 +118,10 @@ fn decide(args: &[String], is_remote: bool, test_mode: bool) -> Action {
     }
     if args.iter().any(|a| a == "quit") {
         Action::Quit
+    } else if args.iter().any(|a| a == "open") {
+        Action::Open
+    } else if args.iter().any(|a| a == "welcome") {
+        Action::ShowWelcome
     } else if args.iter().any(|a| a == "toggle") {
         Action::TogglePalette
     } else if args.iter().any(|a| a == "paste-next") {
@@ -360,6 +370,8 @@ fn run_gtk_app(args: Vec<String>) {
         Rc::new(RefCell::new(None));
 
     let commands_cell: Rc<RefCell<Option<Rc<commands::Commands>>>> = Rc::new(RefCell::new(None));
+    let setup_cell: Rc<RefCell<Option<Rc<setup::Setup>>>> = Rc::new(RefCell::new(None));
+    let test_mode_env = std::env::var("MENEW_TEST").map(|v| v == "1").unwrap_or(false);
 
     // connect_startup is guaranteed to execute ONLY on the primary instance
     let c_startup = Rc::clone(&commands_cell);
@@ -367,8 +379,13 @@ fn run_gtk_app(args: Vec<String>) {
     let u_startup = Rc::clone(&updater_cell);
     let rt_startup = Arc::clone(&rt);
     let w_startup = Rc::clone(&watcher_cell);
+    let s_startup = Rc::clone(&setup_cell);
     app.connect_startup(move |application| {
         info!("GApplication startup: primary instance initializing background services");
+
+        // First run (start at login, the GNOME extension), before the database exists: opening it creates it
+        let setup = setup::Setup::new(application, test_mode_env);
+        *s_startup.borrow_mut() = Some(Rc::clone(&setup));
 
         // 0. The data folder holds the clipboard history: private to this user (older versions used the umask)
         menew_core::private_fs::tighten_data_dir(&menew_core::clipboard_db::data_dir());
@@ -482,6 +499,19 @@ fn run_gtk_app(args: Vec<String>) {
             notes.new_note();
             true
         }));
+        // the palette's "Welcome and setup" and `menew run app.welcome`
+        {
+            let s = Rc::clone(&setup);
+            cmds.add_runner(Rc::new(move |c: &str| {
+                if c != "app.welcome" {
+                    return false;
+                }
+                s.show_welcome(false);
+                true
+            }));
+            let p = Rc::clone(&palette);
+            setup.set_open_menew(Rc::new(move || p.show()));
+        }
         *c_startup.borrow_mut() = Some(Rc::clone(&cmds));
         let db_tray = db.clone();
 
@@ -550,10 +580,21 @@ fn run_gtk_app(args: Vec<String>) {
         });
 
         // 7. Start Global Shortcuts portal
+        let (portal_tx, mut portal_rx) = mpsc::unbounded_channel::<bool>();
         rt_startup.spawn(async move {
             let status = menew_shortcuts::register_and_listen(shortcut_tx).await;
             info!("Shortcut portal status: {:?}", status);
+            let _ = portal_tx.send(matches!(status, menew_shortcuts::PortalShortcutStatus::Success(_)));
         });
+        // without the portal (GNOME 45 to 47) the first run creates GNOME custom shortcuts
+        {
+            let s = Rc::clone(&setup);
+            glib::MainContext::default().spawn_local(async move {
+                if let Some(bound) = portal_rx.recv().await {
+                    s.portal_status(bound);
+                }
+            });
+        }
 
         // 7b. Tick the timers, alarms and focus session once a second
         {
@@ -657,6 +698,7 @@ fn run_gtk_app(args: Vec<String>) {
     let c_cmd = Rc::clone(&commands_cell);
     let app_cmd = app.clone();
     let upd_cmd = Rc::clone(&updater_cell);
+    let s_cmd = Rc::clone(&setup_cell);
     app.connect_command_line(move |_application, cmd_line| {
         let cmd_args: Vec<String> = cmd_line
             .arguments()
@@ -676,9 +718,32 @@ fn run_gtk_app(args: Vec<String>) {
             std::mem::forget(app_cmd.hold());
         }
 
+        // a new user meets the welcome window first, however Menew was started
+        let setup = s_cmd.borrow().clone();
+        let welcome_first = setup.as_ref().map(|s| s.pending()).unwrap_or(false);
+        if welcome_first && !cmd_line.is_remote() && action != Action::Quit {
+            if let Some(s) = &setup {
+                s.show_welcome(false);
+            }
+        }
+
         match action {
             Action::Quit => app_cmd.quit(),
             Action::StayHidden => {}
+            Action::Open => {
+                if welcome_first {
+                    if let Some(s) = &setup {
+                        s.show_welcome(false);
+                    }
+                } else if let Some(palette) = p_cmd.borrow().as_ref() {
+                    palette.show();
+                }
+            }
+            Action::ShowWelcome => {
+                if let Some(s) = &setup {
+                    s.show_welcome(true);
+                }
+            }
             Action::Run(c) => {
                 if let Some(cmds) = c_cmd.borrow().as_ref() {
                     cmds.run(&c);
@@ -902,12 +967,21 @@ mod tests {
 
     #[test]
     fn version_line_has_the_alpha_version() {
-        assert_eq!(version_line(), "menew 0.1.0-alpha.2");
+        assert_eq!(version_line(), "menew 0.1.0-alpha.3");
     }
 
     #[test]
     fn first_launch_without_args_stays_hidden() {
         assert_eq!(decide(&v(&[]), false, false), Action::StayHidden);
+    }
+
+    #[test]
+    fn open_and_welcome() {
+        assert_eq!(decide(&v(&["open"]), false, false), Action::Open);
+        assert_eq!(decide(&v(&["open"]), true, false), Action::Open);
+        assert_eq!(decide(&v(&["welcome"]), true, false), Action::ShowWelcome);
+        // `run` comes first: `menew run note.open` is a command, not `open`
+        assert_eq!(decide(&v(&["run", "open"]), true, false), Action::Run("open".into()));
     }
 
     #[test]

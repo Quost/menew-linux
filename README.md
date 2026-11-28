@@ -36,7 +36,7 @@
   </picture>
 </p>
 
-> **Status: early preview ([0.1.0-alpha.2](https://github.com/Quost/menew-linux/releases), for testers).** Menew for Linux is the port of [Menew for Mac](https://github.com/Quost/menew), and only part of the Mac app exists here so far: the command palette, the clipboard history, notes, screenshots, text from the screen and QR codes, and the system monitor. The first release will come when the core of the Mac app is ported. [docs/parity.md](docs/parity.md) lists every Mac feature and its Linux status. Everything described below works today, on headless GNOME Shell 46 and KWin 5.27 sessions; it has not been tested on a real desktop yet.
+> **Status: early preview ([0.1.0-alpha.3](https://github.com/Quost/menew-linux/releases), for testers).** Menew for Linux is the port of [Menew for Mac](https://github.com/Quost/menew), and only part of the Mac app exists here so far: the command palette, the clipboard history, notes, screenshots, text from the screen and QR codes, and the system monitor. The first release will come when the core of the Mac app is ported. [docs/parity.md](docs/parity.md) lists every Mac feature and its Linux status. Everything described below works today, on headless GNOME Shell 46 and KWin 5.27 sessions; it has not been tested on a real desktop yet.
 
 ## Highlights
 
@@ -210,21 +210,21 @@ Not here yet (see [docs/parity.md](docs/parity.md)): Memory, recordings, pinning
 
 ## Install
 
-There is no release yet. Once there is, the files will be on the [GitHub releases page](https://github.com/Quost/menew-linux/releases); check them with `SHA256SUMS`. Until then, build from source (see [CONTRIBUTING.md](CONTRIBUTING.md)) or build the packages yourself (`cargo deb -p menew`, `scripts/build-appimage.sh`).
+Download from the [website](https://menew.pururucos.com.br/linux) or the [GitHub releases page](https://github.com/Quost/menew-linux/releases) and check the files with `SHA256SUMS` (`sha256sum -c SHA256SUMS --ignore-missing`).
 
-```bash
-sha256sum -c SHA256SUMS
-```
-
-**.deb** (Ubuntu 24.04+, Debian 13):
+**.deb** (Ubuntu 24.04+, Debian 13): double-click the file to install it with App Center (or GNOME Software), or in a terminal:
 
 ```bash
 sudo apt install ./menew_<version>_amd64.deb
-menew --version   # prints the version
-menew             # starts hidden in the tray; open the palette with Ctrl+Alt+Space
 ```
 
-`wl-clipboard` is recommended (used for clipboard history on KDE).
+Then open **Menew** from the app grid. On the first start Menew sets itself up and shows a welcome window that says what it did:
+
+- **Start at login** is turned on (switch it off there, in the tray or in the palette).
+- **GNOME**: its clipboard extension is turned on. GNOME on Wayland loads extensions at login, so **log out and back in once**. On GNOME 45 to 47, which have no global shortcuts portal, the shortcuts are created in Settings › Keyboard › Custom Shortcuts.
+- **KDE Plasma**: the shortcuts come from the system's portal, and the clipboard needs `wl-clipboard` (recommended by the .deb).
+
+Open the welcome again with "Welcome and setup" in the palette or `menew welcome`. If App Center only spins when you double-click the .deb, update it (`sudo snap refresh snap-store`) or use the `apt` command above.
 
 **AppImage** (any x86_64 distro):
 
@@ -233,14 +233,14 @@ chmod +x Menew-<version>-x86_64.AppImage
 ./Menew-<version>-x86_64.AppImage
 ```
 
-GTK4 and libadwaita are bundled. If you enable "Start at login" in the tray, the autostart entry points at the AppImage file, so keep it where it is. The AppImage does not install the GNOME extension (see the FAQ).
+GTK4 and libadwaita are bundled. The first start does the same setup; on GNOME the AppImage writes its extension to `~/.local/share/gnome-shell/extensions/`. The autostart entry points at the AppImage file, so keep it where it is.
 
 **Build from source** (needs a Rust toolchain and the GTK4 and libadwaita development packages):
 
 ```bash
 git clone https://github.com/Quost/menew-linux
 cd menew-linux
-cargo run -p menew
+cargo run -p menew -- open
 ```
 
 ## Keyboard shortcuts
@@ -264,7 +264,7 @@ cargo run -p menew
 | <kbd>Ctrl</kbd> <kbd>K</kbd> | Actions of the selected clipboard entry (also right click) |
 | <kbd>Alt</kbd> <kbd>←</kbd> <kbd>→</kbd> | Previous / next clipboard filter |
 
-The global shortcuts use the GlobalShortcuts portal, available on KDE Plasma and GNOME 48+. On GNOME 45-47 create custom shortcuts in Settings (Keyboard, Custom Shortcuts) that run `menew toggle`, `menew clipboard`, `menew capture` and `menew capture-text`.
+The global shortcuts use the GlobalShortcuts portal, available on KDE Plasma and GNOME 48+. On GNOME 45 to 47 Menew creates them on its first start as custom shortcuts (Settings › Keyboard › Custom Shortcuts, named "Menew: ..."), where you can change them; the window snapping keys are left out there because GNOME uses them to move windows between workspaces (GNOME snaps with <kbd>Super</kbd> <kbd>←</kbd> <kbd>→</kbd>). The welcome window (`menew welcome`) has a button to create them later.
 
 ## Privacy
 
@@ -281,6 +281,7 @@ The app has **no telemetry, no analytics and no account**, and makes no network 
 - "Clear history" in the tray deletes every unpinned entry and the image files that go with them.
 - Notes live in `~/.local/share/menew/notes/notes.json` (the same format as the Mac). **Normal notes are plain text in that file.** Protected and password notes keep only their title there: the rest is in the Secret Service of your keyring (`application=app.menew.Menew`), never in a plain file. Opening one asks for your password through polkit; where the polkit policy is not installed (AppImage) or there is no authentication agent, the keyring unlocked at login is the only protection, and the notes window says so.
 - Quick actions and window snapping run your desktop's own tools locally (`pactl`, `gsettings`, `systemd-inhibit`, `loginctl`, `gio`, `lsblk`, `udisksctl`, `ddcutil`, a KWin script or the Menew GNOME extension) and send nothing anywhere. The color picker goes through the screenshot portal and keeps only the color.
+- The first start changes only local settings, and says so in the welcome window: the autostart entry `~/.config/autostart/menew.desktop`, on GNOME the list of enabled extensions (`org.gnome.shell enabled-extensions`) and, on GNOME 45 to 47, custom shortcuts named "Menew: ..." (`org.gnome.settings-daemon.plugins.media-keys`). Each can be undone in the welcome window, the tray or GNOME Settings.
 - The optional paste simulation only writes a <kbd>Ctrl</kbd> <kbd>V</kbd> key press to `/dev/uinput`; it never reads keyboard input.
 
 ## FAQ
@@ -292,13 +293,13 @@ Yes. It is free and open source under the GPL-3.0 license: no ads, no subscripti
 GNOME and KDE Plasma on Wayland. X11 is best effort only. So far it was tested on headless GNOME Shell 46 and KWin 5.27 sessions (Ubuntu 24.04), not on a real desktop.
 
 **Why does GNOME need an extension for the clipboard?**  
-GNOME's compositor (Mutter) does not let background apps read the clipboard on Wayland. On GNOME the clipboard history needs the Menew GNOME Shell extension, which sends copies to Menew over D-Bus. The .deb installs it in `/usr/share/gnome-shell/extensions/menew-bridge@pururucos.com.br/` but **does not enable it**: run `gnome-extensions enable menew-bridge@pururucos.com.br`, then log out and in again (Wayland cannot reload GNOME Shell). With the AppImage, run `bash gnome-extension/install.sh` from a checkout and enable it the same way. On KDE Plasma nothing extra is needed.
+GNOME's compositor (Mutter) does not let background apps read the clipboard on Wayland. On GNOME the clipboard history needs the Menew GNOME Shell extension, which sends copies to Menew over D-Bus. The .deb installs it in `/usr/share/gnome-shell/extensions/menew-bridge@pururucos.com.br/` and Menew turns it on by itself on its first start (in `org.gnome.shell enabled-extensions`); the AppImage writes it to `~/.local/share/gnome-shell/extensions/` first. GNOME on Wayland only loads extensions at login, so log out and back in once. If it is still off, run `gnome-extensions enable menew-bridge@pururucos.com.br`. Whoever had turned on its old name (`menew-bridge@menew.web.app`) gets the new one by itself. On KDE Plasma nothing extra is needed.
 
 **I do not see the tray icon on GNOME.**  
 GNOME has no tray by default. Install the AppIndicator extension (`sudo apt install gnome-shell-extension-appindicator` on Ubuntu and Debian, `sudo dnf install gnome-shell-extension-appindicator` on Fedora) and enable it with `gnome-extensions enable appindicatorsupport@rgcjonas.gmail.com`. KDE Plasma shows the tray icon out of the box.
 
 **The shortcut does nothing.**  
-Global shortcuts need the GlobalShortcuts portal (KDE Plasma, GNOME 48+). On GNOME 45-47 create custom shortcuts that run `menew toggle`, `menew clipboard`, `menew capture` and `menew capture-text`.
+Global shortcuts need the GlobalShortcuts portal (KDE Plasma, GNOME 48+). On GNOME 45 to 47 Menew creates custom shortcuts on its first start; if they are missing, open `menew welcome` and press "Create the shortcuts", or create them yourself in Settings › Keyboard › Custom Shortcuts with the commands `menew toggle`, `menew clipboard`, `menew paste-next`, `menew capture` and `menew capture-text`.
 
 **Can Menew paste for me?**  
 By default Menew copies the entry and shows "Copied. Press Ctrl+V to paste". To let it press <kbd>Ctrl</kbd> <kbd>V</kbd> for you it needs write access to `/dev/uinput`. The packages **do not** install this; the rule is in `data/60-menew-uinput.rules`:

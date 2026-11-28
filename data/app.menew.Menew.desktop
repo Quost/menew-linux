@@ -6,9 +6,42 @@ Comment[pt]=Paleta de comandos e histórico da área de transferência
 Comment[de]=Befehlspalette und Zwischenablage-Verlauf
 Comment[es]=Paleta de comandos e historial del portapapeles
 Comment[zh_CN]=命令面板和剪贴板历史
-Exec=menew
+Exec=menew open
 Icon=menew
 Terminal=false
 Categories=Utility;
-Keywords=launcher;clipboard;palette;calculator;
+Keywords=launcher;clipboard;palette;calculator;screenshot;notes;
 StartupNotify=false
+Actions=clipboard;capture;new-note;welcome;
+
+[Desktop Action clipboard]
+Name=Clipboard history
+Name[pt]=Histórico do clipboard
+Name[de]=Zwischenablage-Verlauf
+Name[es]=Historial del portapapeles
+Name[zh_CN]=剪贴板历史
+Exec=menew clipboard
+
+[Desktop Action capture]
+Name=Screenshot
+Name[pt]=Captura de tela
+Name[de]=Bildschirmfoto
+Name[es]=Captura de pantalla
+Name[zh_CN]=截图
+Exec=menew capture
+
+[Desktop Action new-note]
+Name=New note
+Name[pt]=Nova nota
+Name[de]=Neue Notiz
+Name[es]=Nueva nota
+Name[zh_CN]=新建笔记
+Exec=menew run note.new
+
+[Desktop Action welcome]
+Name=Welcome and setup
+Name[pt]=Boas-vindas e configuração
+Name[de]=Willkommen und Einrichtung
+Name[es]=Bienvenida y configuración
+Name[zh_CN]=欢迎与设置
+Exec=menew welcome

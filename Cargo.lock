@@ -1037,7 +1037,7 @@ dependencies = [
 
 [[package]]
 name = "menew"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "ashpd",
  "gtk4",
@@ -1056,7 +1056,7 @@ dependencies = [
 
 [[package]]
 name = "menew-clipboard"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "futures-util",
  "menew-core",
@@ -1069,7 +1069,7 @@ dependencies = [
 
 [[package]]
 name = "menew-core"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "chrono",
  "dirs",
@@ -1086,7 +1086,7 @@ dependencies = [
 
 [[package]]
 name = "menew-desktop"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "ashpd",
  "tokio",
@@ -1096,7 +1096,7 @@ dependencies = [
 
 [[package]]
 name = "menew-shortcuts"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "ashpd",
  "futures-util",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "menew-tray"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "ksni",
  "menew-core",
@@ -1117,7 +1117,7 @@ dependencies = [
 
 [[package]]
 name = "menew-ui"
-version = "0.1.0-alpha.2"
+version = "0.1.0-alpha.3"
 dependencies = [
  "chrono",
  "gtk4",

@@ -1,5 +1,6 @@
 //! "Start at login": an XDG autostart entry in `~/.config/autostart/menew.desktop`.
-//! Opt-in: nothing is written unless the user enables it.
+//! On by default for a new user (the first start writes it, like the Mac's `LaunchAtLogin.applyDefault`);
+//! after that only the user's switch changes it.
 
 use std::path::{Path, PathBuf};
 
